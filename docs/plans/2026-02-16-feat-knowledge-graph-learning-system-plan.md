@@ -690,20 +690,20 @@ Build the core graph logic and AI proposal generation.
 Wire up Axum + async-graphql.
 
 **Tasks:**
-- [ ] Add `async-graphql = "7"` and `async-graphql-axum = "7"` to workspace dependencies
-- [ ] Create `modules/learning-server/` with Axum app
-- [ ] Implement `state.rs` — AppState with PgPool + Memgraph Graph + AI client
-- [ ] Implement GraphQL schema:
+- [x] Add `async-graphql = "7"` and `async-graphql-axum = "7"` to workspace dependencies
+- [x] Create `modules/learning-server/` with Axum app
+- [x] Implement `state.rs` — AppState with PgPool + Memgraph Graph + AI client
+- [x] Implement GraphQL schema:
   - `graphql/types.rs` — GraphQL object types (TopicGraph, GraphNode, GraphEdge, NodeState, EdgeState, Movement, etc.)
   - `graphql/query.rs` — Query resolvers: `myTopics`, `topicGraph` (calls assembler)
-  - `graphql/mutation.rs` — Mutation resolvers: `sendOtp`, `verifyOtp`, `enterTopic`, `traverse`, `backUp`, `showMore` (all graph mutations call assembler and return TopicGraph)
+  - `graphql/mutation.rs` — Mutation resolvers: `sendOtp`, `verifyOtp`, `enterTopic`, `traverse`, `backUp`, `showMore`, `leaveNote`, `askAboutNode` (all graph mutations call assembler and return TopicGraph)
   - `graphql/guard.rs` — Auth guard: extract JWT from HTTP-only cookie, validate, inject member_id into context
   - `graphql/schema.rs` — Build schema with Query + Mutation, inject AppState as data
-- [ ] Mount GraphQL endpoint at `POST /graphql` via `async_graphql_axum::GraphQL`
-- [ ] Mount GraphQL Playground at `GET /graphql` in dev mode
-- [ ] Auth handling — JWT extracted from HTTP-only cookie via guard, member_id injected into GraphQL context
-- [ ] CORS middleware — allow React dev server origin
-- [ ] Update `config/learning.toml` with memgraph settings, remove old curriculum settings
+- [x] Mount GraphQL endpoint at `POST /graphql` via `async_graphql_axum::GraphQL`
+- [x] Mount GraphQL Playground at `GET /graphiql` in dev mode
+- [x] Auth handling — JWT extracted from HTTP-only cookie via guard, member_id injected into GraphQL context
+- [x] CORS middleware — allow React dev server origin
+- [x] Update `config/learning.toml` with memgraph settings, remove old curriculum settings
 
 **Success criteria:** Can interact with the full traversal loop via GraphQL Playground. Session persists across requests.
 

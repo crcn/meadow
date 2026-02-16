@@ -1,4 +1,3 @@
-use ai_client::tool::{DynTool, ToolWrapper};
 use ai_client::traits::{Agent, PromptBuilder};
 use neo4rs::Graph;
 use std::sync::Arc;

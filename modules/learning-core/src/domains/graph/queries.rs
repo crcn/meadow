@@ -1,4 +1,4 @@
-use neo4rs::{query, Graph, Query};
+use neo4rs::{query, Graph};
 use uuid::Uuid;
 
 use super::models::{Edge, Movement, Node, Resource, TopicRoot};

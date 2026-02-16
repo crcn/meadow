@@ -4,7 +4,6 @@ use twilio::{TwilioOptions, TwilioService};
 use crate::error::{Error, Result};
 
 const TEST_PHONE: &str = "+1234567890";
-const TEST_CODE: &str = "123456";
 
 pub struct OtpService {
     twilio: TwilioService,

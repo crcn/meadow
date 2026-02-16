@@ -1,6 +1,5 @@
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
-use uuid::Uuid;
 
 use super::models::{Identifier, Member};
 use crate::error::Result;

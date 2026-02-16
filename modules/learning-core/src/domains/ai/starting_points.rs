@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use super::agent;
 use super::prompts::{INVESTIGATION_SYSTEM_PROMPT, STARTING_POINTS_PROMPT};
-use crate::domains::graph::models::{Movement, Resource, TopicGraph};
+use crate::domains::graph::models::{Resource, TopicGraph};
 use crate::domains::graph::{assembler, queries};
 use crate::error::Result;
 
