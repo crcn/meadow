@@ -712,36 +712,36 @@ Wire up Axum + async-graphql.
 Build the React SPA with a Duolingo-style canvas for graph traversal.
 
 **Tasks:**
-- [ ] Initialize `web/` with Vite + React + TypeScript
-- [ ] Install React Flow (`@xyflow/react`) for canvas rendering
-- [ ] Set up GraphQL client (`web/src/api/client.ts`) — urql or graphql-request pointing at `/graphql`
-- [ ] Define GraphQL operations (`web/src/api/operations.ts`) — typed queries and mutations
-- [ ] Define TypeScript types (`web/src/api/types.ts`) — TopicGraph, GraphNode, GraphEdge, NodeState, EdgeState
-- [ ] Login page (`Login.tsx`): phone number input → OTP code input → authenticated
+- [x] Initialize `web/` with Vite + React + TypeScript
+- [x] Install React Flow (`@xyflow/react`) for canvas rendering
+- [x] Set up GraphQL client (`web/src/api/client.ts`) — graphql-request pointing at `/graphql`
+- [x] Define GraphQL operations (`web/src/api/operations.ts`) — typed queries and mutations
+- [x] Define TypeScript types (`web/src/api/types.ts`) — TopicGraph, GraphNode, GraphEdge, NodeState, EdgeState
+- [x] Login page (`Login.tsx`): phone number input → OTP code input → authenticated
   - Calls `sendOtp` mutation, then `verifyOtp` mutation
-  - On success, cookie is set automatically (HTTP-only), redirect to Home
-- [ ] Auth hook (`useAuth.ts`): track logged-in state, redirect to login if unauthenticated
-- [ ] Home page (`Home.tsx`): text input to express interest + list of continue topics
+  - On success, cookie is set, redirect to Home
+- [x] Auth hook (`useAuth.ts`): track logged-in state, redirect to login if unauthenticated
+- [x] Home page (`Home.tsx`): text input to express interest + list of continue topics
   - New interest → calls `enterTopic` → navigates to Canvas
   - Continue topic → navigates to Canvas, fires `topicGraph` query
-- [ ] Canvas page (`Canvas.tsx`): THE main experience
+- [x] Canvas page (`Canvas.tsx`): THE main experience
   - Receives `TopicGraph` from mutations/queries
   - Converts to React Flow elements via `toReactFlowElements()`
   - Renders full visible subgraph as interactive canvas
-- [ ] `useTopicGraph` hook: manages graph state, wraps all mutations, converts TopicGraph → React Flow elements
-- [ ] Custom React Flow node types:
+- [x] `useTopicGraph` hook: manages graph state, wraps all mutations, converts TopicGraph → React Flow elements
+- [x] Custom React Flow node types:
   - `CurrentNode.tsx` — double border, full detail (description + resources visible)
   - `VisitedNode.tsx` — solid filled, compact (title only)
   - `ProposalNode.tsx` — dashed border, movement badge, click to traverse
   - `TopicRootNode.tsx` — central hub, distinct visual treatment
-- [ ] Custom React Flow edge type:
+- [x] Custom React Flow edge type:
   - `MovementEdge.tsx` — color-coded by movement type, solid=traversed, dashed=proposal, opacity by state
-- [ ] `DetailPanel.tsx` — bottom sheet/panel showing resources (articles, videos) when a node is selected
-- [ ] `ShowMoreButton.tsx` — floating button on canvas, calls `showMore` mutation for selected node
-- [ ] Auto-layout: force-directed or radial layout, camera pans to current node on traverse
-- [ ] Session resume: on load, call `myTopics` query. Continue → `topicGraph` query → render canvas
-- [ ] React Router: `/login`, `/` (home), `/topics/:topicId` (canvas)
-- [ ] Basic styling — clean, minimal, functional
+- [x] `DetailPanel.tsx` — side panel showing resources (articles, videos, notes, ask AI) when a node is selected
+- [x] `ShowMoreButton.tsx` — floating button on canvas, calls `showMore` mutation for selected node
+- [x] Auto-layout: radial layout, camera pans to current node on traverse
+- [x] Session resume: on load, call `myTopics` query. Continue → `topicGraph` query → render canvas
+- [x] React Router: `/login`, `/` (home), `/topics/:topicId` (canvas)
+- [x] Basic styling — clean, minimal, meadow-green theme
 
 **Success criteria:** Can use the full traversal loop in a browser canvas. Enter topic → see graph with starting points → click a node → graph grows → repeat. Camera follows the learner's path.
 
