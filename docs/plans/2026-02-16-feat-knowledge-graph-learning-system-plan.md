@@ -216,7 +216,7 @@ modules/
   learning-core/       # NEW - domain models, traits, graph logic
   learning-server/     # NEW - Axum API + routes
 
-web/                   # NEW - React SPA (separate from Cargo workspace)
+  web/                   # NEW - React SPA (separate from Cargo workspace)
   package.json
   vite.config.ts
   tsconfig.json
