@@ -9,7 +9,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use neo4rs::Graph;
+use neo4rs::{ConfigBuilder, Graph};
 use sqlx::postgres::PgPoolOptions;
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -52,9 +52,13 @@ async fn main() -> anyhow::Result<()> {
     let memgraph_user = std::env::var("MEMGRAPH_USER").unwrap_or_else(|_| "".into());
     let memgraph_pass = std::env::var("MEMGRAPH_PASSWORD").unwrap_or_else(|_| "".into());
 
-    let graph = Arc::new(
-        Graph::new(&memgraph_uri, &memgraph_user, &memgraph_pass).await?,
-    );
+    let config = ConfigBuilder::default()
+        .uri(&memgraph_uri)
+        .user(&memgraph_user)
+        .password(&memgraph_pass)
+        .db("memgraph")
+        .build()?;
+    let graph = Arc::new(Graph::connect(config).await?);
     tracing::info!("Connected to Memgraph");
 
     // Set up Memgraph schema (constraints, indexes)
