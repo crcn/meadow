@@ -9,7 +9,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U learning"]
       interval: 5s
@@ -25,6 +24,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9070/deployments || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
 
   learning-server:
     build:
@@ -41,11 +46,16 @@ services:
       SERVER_PORT: 3000
       RESTATE_PORT: 9080
       RUST_LOG: info,learning_server=debug,learning_domains=debug
+      DOCKER_ENV: "1"
+      AI_PROVIDER: ${AI_PROVIDER:-anthropic}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
       restate:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - ./:/app
       - cargo_cache:/usr/local/cargo/registry

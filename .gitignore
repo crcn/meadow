@@ -1,0 +1,28 @@
+# Rust build artifacts
+/target/
+**/target/
+
+# Cargo lock for libraries (keep for binaries)
+# Cargo.lock  — we keep this committed for reproducible builds
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Docker volumes
+postgres_data/
+
+# Dioxus build output
+modules/learning-web/dist/
+
+# Dev CLI build
+dev/cli/target/
