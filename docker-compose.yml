@@ -17,13 +17,11 @@ services:
 
   memgraph:
     image: memgraph/memgraph-mage:latest
+    entrypoint: ["/usr/lib/memgraph/memgraph", "--also-log-to-stderr", "--storage-properties-on-edges=true", "--auth-module-mappings="]
     ports:
       - "7688:7687"   # Bolt protocol (host 7688 → container 7687)
     volumes:
       - memgraph_data:/var/lib/memgraph
-    environment:
-      MEMGRAPH_USER: memgraph
-      MEMGRAPH_PASSWORD: memgraph
     healthcheck:
       test: ["CMD-SHELL", "echo 'RETURN 1;' | mgconsole --host 127.0.0.1 --port 7687 || exit 1"]
       interval: 5s
@@ -34,7 +32,7 @@ services:
   memgraph-lab:
     image: memgraph/lab:latest
     ports:
-      - "3001:3000"
+      - "3002:3000"
     depends_on:
       memgraph:
         condition: service_healthy
@@ -51,8 +49,8 @@ services:
     environment:
       DATABASE_URL: postgres://learning:learning@postgres:5432/learning
       MEMGRAPH_URI: bolt://memgraph:7687
-      MEMGRAPH_USER: memgraph
-      MEMGRAPH_PASSWORD: memgraph
+      MEMGRAPH_USER: ""
+      MEMGRAPH_PASSWORD: ""
       PORT: "4000"
       RUST_LOG: info,learning_server=debug,learning_core=debug
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
