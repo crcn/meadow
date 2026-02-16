@@ -348,7 +348,7 @@ pub async fn vector_search_topic_roots(
     limit: usize,
 ) -> Result<Vec<(TopicRoot, f64)>> {
     let mut result = graph.execute(
-        query("CALL vector_search.search('TopicRoot', 'embedding', $limit, $embedding) YIELD node, similarity RETURN node.id AS id, node.name AS name, node.description AS description, similarity")
+        query("CALL vector_search.search('topic_root_embedding', $limit, $embedding) YIELD node, similarity RETURN node.id AS id, node.name AS name, node.description AS description, similarity")
             .param("embedding", embedding.to_vec())
             .param("limit", limit as i64)
     ).await?;
@@ -378,7 +378,7 @@ pub async fn vector_search_nodes(
     limit: usize,
 ) -> Result<Vec<(Node, f64)>> {
     let mut result = graph.execute(
-        query("CALL vector_search.search('Node', 'embedding', $limit, $embedding) YIELD node, similarity WHERE node.topic_root_id = $topic_root_id RETURN node.id AS id, node.title AS title, node.description AS description, node.topic_root_id AS topic_root_id, node.resources AS resources, node.visit_count AS visit_count, similarity")
+        query("CALL vector_search.search('node_embedding', $limit, $embedding) YIELD node, similarity WHERE node.topic_root_id = $topic_root_id RETURN node.id AS id, node.title AS title, node.description AS description, node.topic_root_id AS topic_root_id, node.resources AS resources, node.visit_count AS visit_count, similarity")
             .param("embedding", embedding.to_vec())
             .param("topic_root_id", topic_root_id.to_string())
             .param("limit", limit as i64)

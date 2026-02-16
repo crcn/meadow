@@ -15,11 +15,11 @@ import { NodeState, EdgeState } from '../api/types'
 // ─── Movement colors ─────────────────────────────────────────────────
 
 const MOVEMENT_COLORS: Record<string, string> = {
-  SUPPORTS: '#4CAF50',
-  DEEPENS: '#2196F3',
-  RELATES_TO: '#FF9800',
-  APPLIES: '#9C27B0',
-  CONTEXTUALIZES: '#00BCD4',
+  SUPPORTS: '#d4a574',
+  DEEPENS: '#c49060',
+  RELATES_TO: '#dbb894',
+  APPLIES: '#c9986c',
+  CONTEXTUALIZES: '#d4b898',
 }
 
 // ─── Convert TopicGraph → React Flow elements ───────────────────────
@@ -68,71 +68,81 @@ function getNodeType(node: GraphNode): string {
   }
 }
 
-// ─── Simple radial layout ────────────────────────────────────────────
+// ─── Tree layout ────────────────────────────────────────────────────
 
-function applyLayout(nodes: Node[], edges: Edge[], currentNodeId: string): Node[] {
+const H_SPACING = 360 // horizontal gap between siblings
+const V_SPACING = 200 // vertical gap between rows
+
+function applyLayout(nodes: Node[], edges: Edge[], _currentNodeId: string): Node[] {
   if (nodes.length === 0) return nodes
 
-  // Build adjacency
+  // Build parent→children adjacency
   const children: Record<string, string[]> = {}
   for (const edge of edges) {
     if (!children[edge.source]) children[edge.source] = []
     children[edge.source].push(edge.target)
   }
 
-  // BFS from topic root (first node in array, or find it)
   const rootNode = nodes.find((n) => n.type === 'topicRoot') || nodes[0]
   const visited = new Set<string>()
   const positions: Record<string, { x: number; y: number }> = {}
 
-  // Place root at center
-  positions[rootNode.id] = { x: 0, y: 0 }
-  visited.add(rootNode.id)
+  // First pass: compute subtree widths (leaf count)
+  function subtreeWidth(id: string): number {
+    visited.add(id)
+    const kids = (children[id] || []).filter((c) => !visited.has(c))
+    if (kids.length === 0) return 1
+    return kids.reduce((sum, kid) => sum + subtreeWidth(kid), 0)
+  }
+  const totalWidth = subtreeWidth(rootNode.id)
+  visited.clear()
 
-  const queue: { id: string; depth: number; parentAngle: number }[] = []
-
-  const rootChildren = children[rootNode.id] || []
-  rootChildren.forEach((childId, i) => {
-    const angle = (2 * Math.PI * i) / rootChildren.length - Math.PI / 2
-    queue.push({ id: childId, depth: 1, parentAngle: angle })
-  })
-
-  const RING_SPACING = 200
-
-  while (queue.length > 0) {
-    const { id, depth, parentAngle } = queue.shift()!
-    if (visited.has(id)) continue
+  // Second pass: assign positions top-down
+  function assignPositions(id: string, x: number, y: number, availableWidth: number) {
+    if (visited.has(id)) return
     visited.add(id)
 
-    const radius = depth * RING_SPACING
-    positions[id] = {
-      x: Math.cos(parentAngle) * radius,
-      y: Math.sin(parentAngle) * radius,
-    }
+    positions[id] = { x, y }
 
-    const nodeChildren = (children[id] || []).filter((c) => !visited.has(c))
-    const spreadAngle = Math.PI / 3
-    nodeChildren.forEach((childId, i) => {
-      const offset =
-        nodeChildren.length === 1
-          ? 0
-          : ((i / (nodeChildren.length - 1)) - 0.5) * spreadAngle
-      queue.push({
-        id: childId,
-        depth: depth + 1,
-        parentAngle: parentAngle + offset,
-      })
+    const kids = (children[id] || []).filter((c) => !visited.has(c))
+    if (kids.length === 0) return
+
+    // Compute widths for each subtree to allocate space proportionally
+    const kidVisited = new Set<string>(visited)
+    const widths = kids.map((kid) => {
+      const tempVisited = new Set<string>(kidVisited)
+      function tw(nid: string): number {
+        tempVisited.add(nid)
+        const ch = (children[nid] || []).filter((c) => !tempVisited.has(c))
+        if (ch.length === 0) return 1
+        return ch.reduce((s, c) => s + tw(c), 0)
+      }
+      return tw(kid)
+    })
+
+    const totalKidWidth = widths.reduce((s, w) => s + w, 0)
+    const slotWidth = Math.max(availableWidth, totalKidWidth * H_SPACING)
+
+    let offsetX = x - slotWidth / 2
+    kids.forEach((kid, i) => {
+      const kidSlot = (widths[i] / totalKidWidth) * slotWidth
+      const kidX = offsetX + kidSlot / 2
+      assignPositions(kid, kidX, y + V_SPACING, kidSlot)
+      offsetX += kidSlot
     })
   }
 
-  // Assign positions — any unvisited nodes get placed around the edge
-  let unvisitedAngle = 0
+  assignPositions(rootNode.id, 0, 0, totalWidth * H_SPACING)
+
+  // Place any orphan nodes that weren't reached
+  const orphans = nodes.filter((n) => !positions[n.id])
+  orphans.forEach((node, i) => {
+    positions[node.id] = { x: (i - orphans.length / 2) * H_SPACING, y: -V_SPACING }
+  })
+
   return nodes.map((node) => ({
     ...node,
-    position: positions[node.id] || {
-      x: Math.cos(unvisitedAngle++) * 400,
-      y: Math.sin(unvisitedAngle) * 400,
-    },
+    position: positions[node.id] || { x: 0, y: 0 },
   }))
 }
 

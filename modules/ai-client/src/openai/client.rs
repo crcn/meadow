@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
-use tracing::debug;
+use tracing::{debug, info};
 
 use super::types::*;
 
@@ -38,8 +38,16 @@ impl OpenAiClient {
 
     pub async fn chat(&self, request: &ChatRequest) -> Result<ChatResponse> {
         let url = format!("{}/chat/completions", self.base_url);
+        let tool_count = request.tools.as_ref().map(|t| t.len()).unwrap_or(0);
 
-        debug!(model = %request.model, "OpenAI chat request");
+        info!(
+            model = %request.model,
+            messages = request.messages.len(),
+            tools = tool_count,
+            "OpenAI chat request"
+        );
+
+        let start = std::time::Instant::now();
 
         let response = self
             .http
@@ -48,6 +56,8 @@ impl OpenAiClient {
             .json(request)
             .send()
             .await?;
+
+        let elapsed = start.elapsed();
 
         if !response.status().is_success() {
             let status = response.status();
@@ -55,13 +65,29 @@ impl OpenAiClient {
             return Err(anyhow!("OpenAI API error ({}): {}", status, error_text));
         }
 
-        Ok(response.json().await?)
+        let chat_response: ChatResponse = response.json().await?;
+
+        if let Some(ref usage) = chat_response.usage {
+            info!(
+                prompt_tokens = usage.prompt_tokens,
+                completion_tokens = usage.completion_tokens,
+                total_tokens = usage.total_tokens,
+                elapsed_ms = elapsed.as_millis() as u64,
+                "OpenAI chat response"
+            );
+        } else {
+            info!(elapsed_ms = elapsed.as_millis() as u64, "OpenAI chat response (no usage data)");
+        }
+
+        Ok(chat_response)
     }
 
     pub async fn structured_output(&self, request: &StructuredRequest) -> Result<String> {
         let url = format!("{}/chat/completions", self.base_url);
 
-        debug!(model = %request.model, "OpenAI structured output request");
+        info!(model = %request.model, "OpenAI structured output request");
+
+        let start = std::time::Instant::now();
 
         let response = self
             .http
@@ -70,6 +96,8 @@ impl OpenAiClient {
             .json(request)
             .send()
             .await?;
+
+        let elapsed = start.elapsed();
 
         if !response.status().is_success() {
             let status = response.status();
@@ -83,6 +111,16 @@ impl OpenAiClient {
 
         let chat_response: ChatResponse = response.json().await?;
 
+        if let Some(ref usage) = chat_response.usage {
+            info!(
+                prompt_tokens = usage.prompt_tokens,
+                completion_tokens = usage.completion_tokens,
+                total_tokens = usage.total_tokens,
+                elapsed_ms = elapsed.as_millis() as u64,
+                "OpenAI structured output response"
+            );
+        }
+
         chat_response
             .choices
             .into_iter()
@@ -93,6 +131,11 @@ impl OpenAiClient {
 
     pub async fn embed(&self, model: &str, text: &str) -> Result<Vec<f32>> {
         let url = format!("{}/embeddings", self.base_url);
+        let text_preview: String = text.chars().take(80).collect();
+
+        debug!(model = model, text = %text_preview, "OpenAI embedding request");
+
+        let start = std::time::Instant::now();
 
         let request = EmbeddingRequest {
             model: model.to_string(),
@@ -107,6 +150,8 @@ impl OpenAiClient {
             .send()
             .await?;
 
+        let elapsed = start.elapsed();
+
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await?;
@@ -119,12 +164,21 @@ impl OpenAiClient {
 
         let embed_response: EmbeddingResponse = response.json().await?;
 
-        embed_response
+        let embedding = embed_response
             .data
             .into_iter()
             .next()
             .map(|d| d.embedding)
-            .ok_or_else(|| anyhow!("No embedding in response"))
+            .ok_or_else(|| anyhow!("No embedding in response"))?;
+
+        info!(
+            model = model,
+            dimensions = embedding.len(),
+            elapsed_ms = elapsed.as_millis() as u64,
+            "OpenAI embedding complete"
+        );
+
+        Ok(embedding)
     }
 
     pub async fn embed_batch(&self, model: &str, texts: &[String]) -> Result<Vec<Vec<f32>>> {

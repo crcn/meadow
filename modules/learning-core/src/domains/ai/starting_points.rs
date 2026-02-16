@@ -24,6 +24,13 @@ pub async fn generate_starting_points<A: Agent>(
     youtube_api_key: &str,
     max_turns: usize,
 ) -> Result<TopicGraph> {
+    tracing::info!(
+        topic = %topic_name,
+        topic_root_id = %topic_root_id,
+        member_id = %member_id,
+        "Generating starting points for new topic"
+    );
+
     let prompt = format!(
         "{}\n\nThe topic is: \"{}\"\n\nGenerate 3-5 starting points. Each should be a fundamentally different entry angle into this subject.",
         STARTING_POINTS_PROMPT, topic_name
@@ -40,9 +47,21 @@ pub async fn generate_starting_points<A: Agent>(
     )
     .await?;
 
+    tracing::info!(
+        count = proposals.len(),
+        "Persisting starting point nodes"
+    );
+
     // Persist each starting point
-    for proposal in &proposals {
+    for (i, proposal) in proposals.iter().enumerate() {
         let resources: Vec<Resource> = proposal.resources.iter().cloned().map(Into::into).collect();
+
+        tracing::info!(
+            index = i,
+            title = %proposal.title,
+            resources = resources.len(),
+            "Embedding and saving starting point"
+        );
 
         let embedding = embed_agent
             .embed(format!("{} {}", proposal.title, proposal.description))
@@ -63,6 +82,12 @@ pub async fn generate_starting_points<A: Agent>(
 
         // Connect to topic root via STARTS_WITH
         queries::create_starts_with_edge(&memgraph, topic_root_id, node_id).await?;
+
+        tracing::info!(
+            node_id = %node_id,
+            title = %proposal.title,
+            "Starting point node created"
+        );
     }
 
     // Set learner position to topic root

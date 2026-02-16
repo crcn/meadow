@@ -4,7 +4,7 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
-use tracing::debug;
+use tracing::{debug, info, warn};
 
 use crate::traits::{Message, MessageRole, OutputBuilder, PromptBuilder};
 
@@ -83,8 +83,11 @@ impl PromptBuilder for OpenAiPromptBuilder {
         let mut request = ChatRequest::new(&self.agent.model).messages(messages);
 
         // Add tools
+        let tool_names: Vec<String> = Vec::new();
+        let mut tool_names = tool_names;
         for tool in &self.agent.tools {
             let def = tool.definition().await;
+            tool_names.push(def.name.clone());
             request = request.tool(ToolDefinitionWire::function(
                 &def.name,
                 &def.description,
@@ -96,13 +99,23 @@ impl PromptBuilder for OpenAiPromptBuilder {
             request.tool_choice = Some(serde_json::json!("auto"));
         }
 
+        info!(
+            model = %self.agent.model,
+            tools = ?tool_names,
+            max_turns = self.max_turns,
+            "Agent loop starting"
+        );
+
         // Multi-turn tool loop
         let mut turn = 0;
         loop {
             turn += 1;
             if turn > self.max_turns {
+                warn!(max_turns = self.max_turns, "Agent exceeded max turns");
                 return Err(anyhow!("Max turns ({}) exceeded", self.max_turns));
             }
+
+            info!(turn = turn, max_turns = self.max_turns, "Agent turn");
 
             let response = client.chat(&request).await?;
             let choice = response
@@ -112,6 +125,13 @@ impl PromptBuilder for OpenAiPromptBuilder {
 
             if let Some(ref tool_calls) = choice.message.tool_calls {
                 if !tool_calls.is_empty() {
+                    let call_names: Vec<&str> = tool_calls.iter().map(|tc| tc.function.name.as_str()).collect();
+                    info!(
+                        turn = turn,
+                        tool_calls = ?call_names,
+                        "AI requested tool calls"
+                    );
+
                     // Add assistant message with tool calls
                     request.messages.push(WireMessage {
                         role: Role::Assistant,
@@ -133,11 +153,33 @@ impl PromptBuilder for OpenAiPromptBuilder {
                         let args: serde_json::Value =
                             serde_json::from_str(&tc.function.arguments).unwrap_or_default();
 
-                        debug!(tool = %tc.function.name, "Executing tool call");
+                        info!(
+                            tool = %tc.function.name,
+                            args = %tc.function.arguments,
+                            "Executing tool call"
+                        );
 
+                        let start = std::time::Instant::now();
                         let result = match tool.call_json(args).await {
-                            Ok(v) => serde_json::to_string(&v)?,
-                            Err(e) => format!("Error: {}", e),
+                            Ok(v) => {
+                                let s = serde_json::to_string(&v)?;
+                                info!(
+                                    tool = %tc.function.name,
+                                    result_len = s.len(),
+                                    elapsed_ms = start.elapsed().as_millis() as u64,
+                                    "Tool call succeeded"
+                                );
+                                s
+                            }
+                            Err(e) => {
+                                warn!(
+                                    tool = %tc.function.name,
+                                    error = %e,
+                                    elapsed_ms = start.elapsed().as_millis() as u64,
+                                    "Tool call failed"
+                                );
+                                format!("Error: {}", e)
+                            }
                         };
 
                         request.messages.push(WireMessage::tool(&tc.id, &result));
@@ -147,7 +189,14 @@ impl PromptBuilder for OpenAiPromptBuilder {
                 }
             }
 
-            return Ok(choice.message.content.clone().unwrap_or_default());
+            let response_text = choice.message.content.clone().unwrap_or_default();
+            info!(
+                turn = turn,
+                response_len = response_text.len(),
+                "Agent loop complete — final response"
+            );
+
+            return Ok(response_text);
         }
     }
 }

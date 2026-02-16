@@ -52,12 +52,20 @@ pub async fn investigate<A: Agent>(
     user_prompt: &str,
     max_turns: usize,
 ) -> Result<Vec<ProposedNode>> {
+    tracing::info!(
+        max_turns = max_turns,
+        prompt_len = user_prompt.len(),
+        "Starting AI investigation"
+    );
+
     let agent = agent
         .clone()
         .tool(TavilySearchTool::new(tavily_api_key.to_string()))
         .tool(YoutubeSearchTool::new(youtube_api_key.to_string()))
         .tool(YoutubeDetailsTool::new(youtube_api_key.to_string()))
         .tool(ExistingNodesTool::new(memgraph));
+
+    let start = std::time::Instant::now();
 
     let response = agent
         .prompt(user_prompt)
@@ -67,8 +75,26 @@ pub async fn investigate<A: Agent>(
         .await
         .map_err(|e| Error::Ai(e.to_string()))?;
 
+    tracing::info!(
+        response_len = response.len(),
+        elapsed_ms = start.elapsed().as_millis() as u64,
+        "AI investigation complete"
+    );
+
     // Parse JSON array from the response
-    parse_proposals(&response)
+    let proposals = parse_proposals(&response)?;
+
+    for (i, p) in proposals.iter().enumerate() {
+        tracing::info!(
+            index = i,
+            title = %p.title,
+            movement = %p.movement,
+            resources = p.resources.len(),
+            "Parsed proposal"
+        );
+    }
+
+    Ok(proposals)
 }
 
 fn parse_proposals(response: &str) -> Result<Vec<ProposedNode>> {

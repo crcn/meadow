@@ -302,16 +302,15 @@ impl MutationRoot {
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-fn create_ai_agent() -> ai_client::OpenRouter {
-    ai_client::OpenRouter::from_env("google/gemini-2.5-flash")
-        .expect("OPENROUTER_API_KEY must be set")
-        .with_app_name("ourmeadow")
+fn create_ai_agent() -> ai_client::OpenAi {
+    ai_client::OpenAi::from_env("gpt-4o")
+        .expect("OPENAI_API_KEY must be set")
 }
 
-fn create_embed_agent() -> ai_client::OpenRouter {
-    ai_client::OpenRouter::from_env("openai/text-embedding-3-small")
-        .expect("OPENROUTER_API_KEY must be set")
-        .with_app_name("ourmeadow")
+fn create_embed_agent() -> ai_client::OpenAi {
+    ai_client::OpenAi::from_env("gpt-4o")
+        .expect("OPENAI_API_KEY must be set")
+        .with_embedding_model("text-embedding-3-small")
 }
 
 async fn find_topic_root_for_node(state: &AppState, node_id: Uuid) -> Result<Uuid> {

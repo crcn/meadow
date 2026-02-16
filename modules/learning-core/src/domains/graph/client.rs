@@ -40,10 +40,10 @@ pub async fn setup_schema(graph: &Graph) -> Result<()> {
         }
     }
 
-    // Vector indexes — Memgraph 3.8+ syntax
+    // Vector indexes — Memgraph named index syntax
     let vector_indexes = [
-        r#"CREATE VECTOR INDEX ON :Node(embedding) WITH CONFIG {"dimension": 1536, "metric": "cos"}"#,
-        r#"CREATE VECTOR INDEX ON :TopicRoot(embedding) WITH CONFIG {"dimension": 1536, "metric": "cos"}"#,
+        r#"CREATE VECTOR INDEX node_embedding ON :Node(embedding) WITH CONFIG {"dimension": 1536, "capacity": 10000}"#,
+        r#"CREATE VECTOR INDEX topic_root_embedding ON :TopicRoot(embedding) WITH CONFIG {"dimension": 1536, "capacity": 10000}"#,
     ];
 
     for query in &vector_indexes {

@@ -252,8 +252,6 @@ fn interactive_menu(ctx: &AppContext) -> Result<()> {
     use dialoguer::FuzzySelect;
 
     let items = vec![
-        "Start environment (up)",
-        "Stop environment (down)",
         "Docker services",
         "Database",
         "Status",
@@ -270,12 +268,10 @@ fn interactive_menu(ctx: &AppContext) -> Result<()> {
             .interact()?;
 
         match choice {
-            0 => cmd_up(ctx, false)?,
-            1 => cmd_down(ctx, false)?,
-            2 => docker_submenu(ctx)?,
-            3 => db_submenu(ctx)?,
-            4 => cmd_status(ctx)?,
-            5 => cmd_doctor(ctx)?,
+            0 => docker_submenu(ctx)?,
+            1 => db_submenu(ctx)?,
+            2 => cmd_status(ctx)?,
+            3 => cmd_doctor(ctx)?,
             _ => break,
         }
     }

@@ -38,45 +38,55 @@ pub async fn assemble_topic_graph(
     let node_ids: Vec<Uuid> = subgraph.nodes.iter().map(|n| n.id).collect();
     let notes_map = get_notes_for_nodes(db, &node_ids).await?;
 
+    // 4b. Add the topic root itself as a GraphNode
+    let root_graph_node = GraphNode {
+        id: subgraph.topic_root.id,
+        title: subgraph.topic_root.name.clone(),
+        description: subgraph.topic_root.description.clone(),
+        resources: vec![],
+        notes: notes_map.get(&subgraph.topic_root.id).cloned().unwrap_or_default(),
+        state: NodeState::TopicRoot,
+        movement: None,
+        is_wildcard: false,
+        visit_count: 0,
+    };
+
     // 5. Tag nodes with state
-    let nodes: Vec<GraphNode> = subgraph
-        .nodes
-        .iter()
-        .map(|node| {
-            let state = if node.id == topic_root_id {
-                NodeState::TopicRoot
-            } else if node.id == current_node_id {
-                NodeState::Current
-            } else if visited_ids.contains(&node.id) {
-                NodeState::Visited
-            } else {
-                NodeState::Proposal
-            };
+    let mut nodes: Vec<GraphNode> = vec![root_graph_node];
+    nodes.extend(subgraph.nodes.iter().map(|node| {
+        let state = if node.id == topic_root_id {
+            NodeState::TopicRoot
+        } else if node.id == current_node_id {
+            NodeState::Current
+        } else if visited_ids.contains(&node.id) {
+            NodeState::Visited
+        } else {
+            NodeState::Proposal
+        };
 
-            let movement = subgraph
-                .edges
-                .iter()
-                .find(|e| e.target_id == node.id)
-                .map(|e| e.movement);
+        let movement = subgraph
+            .edges
+            .iter()
+            .find(|e| e.target_id == node.id)
+            .map(|e| e.movement);
 
-            let notes = notes_map
-                .get(&node.id)
-                .cloned()
-                .unwrap_or_default();
+        let notes = notes_map
+            .get(&node.id)
+            .cloned()
+            .unwrap_or_default();
 
-            GraphNode {
-                id: node.id,
-                title: node.title.clone(),
-                description: node.description.clone(),
-                resources: node.resources.clone(),
-                notes,
-                state,
-                movement,
-                is_wildcard: false,
-                visit_count: node.visit_count,
-            }
-        })
-        .collect();
+        GraphNode {
+            id: node.id,
+            title: node.title.clone(),
+            description: node.description.clone(),
+            resources: node.resources.clone(),
+            notes,
+            state,
+            movement,
+            is_wildcard: false,
+            visit_count: node.visit_count,
+        }
+    }));
 
     // 6. Tag edges with state
     let edges: Vec<GraphEdge> = subgraph

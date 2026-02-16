@@ -12,6 +12,13 @@ pub async fn ask_about_node<A: Agent>(
     path: &[String],
     question: &str,
 ) -> Result<String> {
+    tracing::info!(
+        node = %node.title,
+        question = %question,
+        path_len = path.len(),
+        "Asking AI about node"
+    );
+
     let context = format!(
         "Current node: {} — {}\nResources: {}\nLearning path: {}\n\nLearner's question: {}",
         node.title,
@@ -29,10 +36,20 @@ pub async fn ask_about_node<A: Agent>(
         question
     );
 
-    ai_agent
+    let start = std::time::Instant::now();
+
+    let answer = ai_agent
         .prompt(&context)
         .preamble(ASK_ABOUT_NODE_PROMPT)
         .send()
         .await
-        .map_err(|e| Error::Ai(e.to_string()))
+        .map_err(|e| Error::Ai(e.to_string()))?;
+
+    tracing::info!(
+        answer_len = answer.len(),
+        elapsed_ms = start.elapsed().as_millis() as u64,
+        "AI answer received"
+    );
+
+    Ok(answer)
 }

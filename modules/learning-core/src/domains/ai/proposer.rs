@@ -28,6 +28,14 @@ pub async fn generate_proposals<A: Agent>(
     // Check existing outgoing edges
     let existing_count = count_outgoing_edges(&memgraph, from_node_id).await?;
 
+    tracing::info!(
+        from_node = %from_node_title,
+        from_node_id = %from_node_id,
+        existing_edges = existing_count,
+        "Generating proposals (need AI: {})",
+        existing_count < 3
+    );
+
     if existing_count < 3 {
         // Graph is sparse — run AI investigation
         let prompt = format!(
@@ -53,6 +61,7 @@ pub async fn generate_proposals<A: Agent>(
             let resources: Vec<Resource> = proposal.resources.iter().cloned().map(Into::into).collect();
 
             // Check for duplicate
+            tracing::info!(title = %proposal.title, "Checking for duplicate node");
             let existing = dedup::find_duplicate(
                 &memgraph,
                 embed_agent,
@@ -63,6 +72,11 @@ pub async fn generate_proposals<A: Agent>(
             .await?;
 
             let node_id = if let Some(existing_node) = existing {
+                tracing::info!(
+                    title = %proposal.title,
+                    existing_id = %existing_node.id,
+                    "Dedup: reusing existing node"
+                );
                 existing_node.id
             } else {
                 // Create new node
@@ -82,12 +96,22 @@ pub async fn generate_proposals<A: Agent>(
                     &embedding,
                 )
                 .await?;
+
+                tracing::info!(
+                    node_id = %new_id,
+                    title = %proposal.title,
+                    movement = %proposal.movement,
+                    resources = resources.len(),
+                    "Created new proposal node"
+                );
                 new_id
             };
 
             // Create edge
             queries::create_edge(&memgraph, from_node_id, node_id, movement).await?;
         }
+    } else {
+        tracing::info!("Sufficient edges exist, skipping AI investigation");
     }
 
     // Return the assembled graph
