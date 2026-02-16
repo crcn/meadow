@@ -1,0 +1,52 @@
+[workspace]
+resolver = "2"
+members = [
+    "modules/learning-core",
+    "modules/learning-domains",
+    "modules/learning-server",
+    "modules/learning-web",
+]
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Web framework
+axum = { version = "0.8", features = ["macros"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json"] }
+
+# Restate durable workflows
+restate-sdk = { version = "0.8", features = ["http_server"] }
+
+# Dioxus frontend
+dioxus = { version = "0.7", features = ["fullstack", "router"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# IDs and time
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Error handling
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json"] }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Config
+dotenvy = "0.15"
+toml = "0.8"
+
+# Misc
+bytes = "1"

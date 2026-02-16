@@ -1,0 +1,14 @@
+[package]
+name = "learning-web"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+learning-core = { path = "../learning-core" }
+dioxus = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+reqwest = { workspace = true }
+tracing = { workspace = true }

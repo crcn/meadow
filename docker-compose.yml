@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: learning
+      POSTGRES_USER: learning
+      POSTGRES_PASSWORD: learning
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U learning"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  restate:
+    image: restatedev/restate:latest
+    ports:
+      - "8080:8080"   # ingress
+      - "9070:9070"   # admin
+      - "9071:9071"   # metrics
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  learning-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"   # Axum API
+      - "9080:9080"   # Restate endpoint
+    environment:
+      DATABASE_URL: postgres://learning:learning@postgres:5432/learning
+      RESTATE_ADMIN_URL: http://restate:9070
+      RESTATE_INGRESS_URL: http://restate:8080
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 3000
+      RESTATE_PORT: 9080
+      RUST_LOG: info,learning_server=debug,learning_domains=debug
+    depends_on:
+      postgres:
+        condition: service_healthy
+      restate:
+        condition: service_started
+    volumes:
+      - ./:/app
+      - cargo_cache:/usr/local/cargo/registry
+      - target_cache:/app/target
+
+volumes:
+  postgres_data:
+  cargo_cache:
+  target_cache:
