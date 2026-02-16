@@ -1,17 +1,19 @@
 [server]
 host = "127.0.0.1"
 port = 3000
-restate_port = 9080
 
 [ai]
 provider = "anthropic"
 model = "claude-sonnet-4-5-20250929"
 max_tokens = 4096
 
-[curriculum]
-default_chapter_count = 6
-max_depth = 5
-prefetch_depth = 2
+[memgraph]
+uri = "bolt://localhost:7687"
+user = "memgraph"
+password = "memgraph"
 
-[prompts]
-dir = "config/prompts"
+[graph]
+dedup_threshold = 0.85
+max_agent_turns = 5
+starting_point_count = 4
+proposals_per_node = 3

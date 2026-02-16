@@ -258,9 +258,9 @@ impl Agent for OpenAi {
 
 #[async_trait]
 impl EmbedAgent for OpenAi {
-    async fn embed(&self, text: impl Into<String> + Send) -> Result<Vec<f32>> {
+    async fn embed(&self, text: String) -> Result<Vec<f32>> {
         self.client()
-            .embed(&self.embedding_model, &text.into())
+            .embed(&self.embedding_model, &text)
             .await
     }
 

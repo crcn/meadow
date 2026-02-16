@@ -173,8 +173,8 @@ impl Agent for OpenRouter {
 
 #[async_trait]
 impl EmbedAgent for OpenRouter {
-    async fn embed(&self, text: impl Into<String> + Send) -> Result<Vec<f32>> {
-        self.client().embed(&self.model, &text.into()).await
+    async fn embed(&self, text: String) -> Result<Vec<f32>> {
+        self.client().embed(&self.model, &text).await
     }
 
     async fn embed_batch(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {

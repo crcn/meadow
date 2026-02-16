@@ -1,27 +1,39 @@
 [workspace]
 resolver = "2"
 members = [
+    "modules/ai-client",
+    "modules/apify-client",
+    "modules/twilio-rs",
     "modules/learning-core",
-    "modules/learning-domains",
     "modules/learning-server",
-    "modules/learning-web",
 ]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
 
 [workspace.dependencies]
 # Async runtime
 tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
 
 # Web framework
 axum = { version = "0.8", features = ["macros"] }
+tower-http = { version = "0.6", features = ["cors"] }
 
-# Database
+# GraphQL
+async-graphql = "7"
+async-graphql-axum = "7"
+
+# Database — Postgres
 sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json"] }
 
-# Restate durable workflows
-restate-sdk = { version = "0.8", features = ["http_server"] }
+# Database — Memgraph (Bolt protocol)
+neo4rs = "0.8"
 
-# Dioxus frontend
-dioxus = { version = "0.7", features = ["fullstack", "router"] }
+# Auth
+jsonwebtoken = "9"
+sha2 = "0.10"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -33,6 +45,7 @@ chrono = { version = "0.4", features = ["serde"] }
 
 # Error handling
 anyhow = "1"
+thiserror = "2"
 
 # Logging
 tracing = "0.1"

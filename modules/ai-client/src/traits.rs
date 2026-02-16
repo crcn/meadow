@@ -82,6 +82,6 @@ pub trait OutputBuilder<T>: Send {
 
 #[async_trait]
 pub trait EmbedAgent: Send + Sync {
-    async fn embed(&self, text: impl Into<String> + Send) -> Result<Vec<f32>>;
+    async fn embed(&self, text: String) -> Result<Vec<f32>>;
     async fn embed_batch(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>>;
 }

@@ -5,16 +5,18 @@ RUN cargo install cargo-watch --locked
 WORKDIR /app
 
 COPY Cargo.toml Cargo.lock* ./
+COPY modules/ai-client/Cargo.toml modules/ai-client/Cargo.toml
+COPY modules/apify-client/Cargo.toml modules/apify-client/Cargo.toml
+COPY modules/twilio-rs/Cargo.toml modules/twilio-rs/Cargo.toml
 COPY modules/learning-core/Cargo.toml modules/learning-core/Cargo.toml
-COPY modules/learning-domains/Cargo.toml modules/learning-domains/Cargo.toml
 COPY modules/learning-server/Cargo.toml modules/learning-server/Cargo.toml
-COPY modules/learning-web/Cargo.toml modules/learning-web/Cargo.toml
 
-# Create dummy src files and empty migrations dir for dependency caching
-RUN mkdir -p modules/learning-core/src && echo "pub fn stub() {}" > modules/learning-core/src/lib.rs && \
-    mkdir -p modules/learning-domains/src && echo "pub fn stub() {}" > modules/learning-domains/src/lib.rs && \
+# Create dummy src files for dependency caching
+RUN mkdir -p modules/ai-client/src && echo "pub fn stub() {}" > modules/ai-client/src/lib.rs && \
+    mkdir -p modules/apify-client/src && echo "pub fn stub() {}" > modules/apify-client/src/lib.rs && \
+    mkdir -p modules/twilio-rs/src && echo "pub fn stub() {}" > modules/twilio-rs/src/lib.rs && \
+    mkdir -p modules/learning-core/src && echo "pub fn stub() {}" > modules/learning-core/src/lib.rs && \
     mkdir -p modules/learning-server/src && echo "fn main() {}" > modules/learning-server/src/main.rs && \
-    mkdir -p modules/learning-web/src && echo "fn main() {}" > modules/learning-web/src/main.rs && \
     mkdir -p migrations
 
 RUN cargo build 2>/dev/null || true
