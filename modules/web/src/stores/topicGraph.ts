@@ -4,6 +4,7 @@ import { Position } from '@xyflow/react'
 import { client } from '../api/client'
 import {
   TOPIC_GRAPH,
+  EXPANSION_SUGGESTIONS,
   TRAVERSE,
   JUMP_TO_NODE,
   BACK_UP,
@@ -17,11 +18,11 @@ import { NodeState, EdgeState } from '../api/types'
 // ─── Movement colors ─────────────────────────────────────────────────
 
 const MOVEMENT_COLORS: Record<string, string> = {
-  SUPPORTS: '#d4a574',
-  DEEPENS: '#c49060',
-  RELATES_TO: '#dbb894',
-  APPLIES: '#c9986c',
-  CONTEXTUALIZES: '#d4b898',
+  DEEPER: '#c49060',
+  BROADER: '#dbb894',
+  FOUNDATION: '#d4a574',
+  PRACTICE: '#b8860b',
+  INSPIRE: '#9b59b6',
 }
 
 // ─── Convert TopicGraph → React Flow elements ───────────────────────
@@ -47,6 +48,8 @@ function toReactFlowElements(graph: TopicGraph): { nodes: Node[]; edges: Edge[] 
     return {
       id: node.id,
       type: nodeType,
+      // Positions start at origin — dagre computes real positions
+      // after React Flow measures actual node dimensions
       position: { x: 0, y: 0 },
       data: { ...node, topicRootId: graph.topicRoot.id },
     }
@@ -69,79 +72,7 @@ function toReactFlowElements(graph: TopicGraph): { nodes: Node[]; edges: Edge[] 
     animated: edge.state === EdgeState.PROPOSAL,
   }))
 
-  return { nodes: applyLayout(nodes, edges, graph.currentNodeId), edges }
-}
-
-// ─── Tree layout ────────────────────────────────────────────────────
-
-const H_SPACING = 420
-const V_SPACING = 240
-
-function applyLayout(nodes: Node[], edges: Edge[], _currentNodeId: string): Node[] {
-  if (nodes.length === 0) return nodes
-
-  const children: Record<string, string[]> = {}
-  for (const edge of edges) {
-    if (!children[edge.source]) children[edge.source] = []
-    children[edge.source].push(edge.target)
-  }
-
-  const rootNode = nodes.find((n) => n.type === 'topicRoot') || nodes[0]
-  const visited = new Set<string>()
-  const positions: Record<string, { x: number; y: number }> = {}
-
-  function subtreeWidth(id: string): number {
-    visited.add(id)
-    const kids = (children[id] || []).filter((c) => !visited.has(c))
-    if (kids.length === 0) return 1
-    return kids.reduce((sum, kid) => sum + subtreeWidth(kid), 0)
-  }
-  const totalWidth = subtreeWidth(rootNode.id)
-  visited.clear()
-
-  function assignPositions(id: string, x: number, y: number, availableWidth: number) {
-    if (visited.has(id)) return
-    visited.add(id)
-    positions[id] = { x, y }
-
-    const kids = (children[id] || []).filter((c) => !visited.has(c))
-    if (kids.length === 0) return
-
-    const kidVisited = new Set<string>(visited)
-    const widths = kids.map((kid) => {
-      const tempVisited = new Set<string>(kidVisited)
-      function tw(nid: string): number {
-        tempVisited.add(nid)
-        const ch = (children[nid] || []).filter((c) => !tempVisited.has(c))
-        if (ch.length === 0) return 1
-        return ch.reduce((s, c) => s + tw(c), 0)
-      }
-      return tw(kid)
-    })
-
-    const totalKidWidth = widths.reduce((s, w) => s + w, 0)
-    const slotWidth = Math.max(availableWidth, totalKidWidth * H_SPACING)
-
-    let offsetX = x - slotWidth / 2
-    kids.forEach((kid, i) => {
-      const kidSlot = (widths[i] / totalKidWidth) * slotWidth
-      const kidX = offsetX + kidSlot / 2
-      assignPositions(kid, kidX, y + V_SPACING, kidSlot)
-      offsetX += kidSlot
-    })
-  }
-
-  assignPositions(rootNode.id, 0, 0, totalWidth * H_SPACING)
-
-  const orphans = nodes.filter((n) => !positions[n.id])
-  orphans.forEach((node, i) => {
-    positions[node.id] = { x: (i - orphans.length / 2) * H_SPACING, y: -V_SPACING }
-  })
-
-  return nodes.map((node) => ({
-    ...node,
-    position: positions[node.id] || { x: 0, y: 0 },
-  }))
+  return { nodes, edges }
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -165,10 +96,11 @@ interface TopicGraphState {
 
 interface TopicGraphActions {
   init: (topicRootId: string) => Promise<void>
-  traverse: (fromNodeId: string, toNodeId: string, movement: Movement) => Promise<void>
+  traverse: (toNodeId: string, movement: Movement) => Promise<void>
   jumpToNode: (nodeId: string) => Promise<void>
   backUp: () => Promise<void>
-  showMore: (nodeId: string, nodeTitle: string) => Promise<void>
+  showMore: (nodeId: string, prompt?: string) => Promise<void>
+  fetchExpansionSuggestions: (nodeId: string) => Promise<string[]>
   loadMoreResources: (nodeId: string) => Promise<void>
   upvoteResource: (nodeId: string, resourceIndex: number) => Promise<void>
   setSelectedNodeId: (id: string | null) => void
@@ -218,14 +150,13 @@ export const useTopicGraphStore = create<TopicGraphStore>((set, get) => ({
     }
   },
 
-  traverse: async (fromNodeId, toNodeId, movement) => {
+  traverse: async (toNodeId, movement) => {
     const { topicRootId } = get()
     if (!topicRootId) return
     set({ loading: true, selectedNodeId: null, error: null })
     try {
       const data = await client.request<{ traverse: TopicGraph }>(TRAVERSE, {
         topicRootId,
-        fromNodeId,
         toNodeId,
         movement,
       })
@@ -286,7 +217,23 @@ export const useTopicGraphStore = create<TopicGraphStore>((set, get) => ({
     }
   },
 
-  showMore: async (nodeId, nodeTitle) => {
+  fetchExpansionSuggestions: async (nodeId) => {
+    const { topicRootId } = get()
+    if (!topicRootId) return []
+    try {
+      const data = await client.request<{ topicGraph: { expansionSuggestions: string[] } }>(
+        EXPANSION_SUGGESTIONS,
+        { topicRootId, nodeId },
+      )
+      return data.topicGraph.expansionSuggestions
+    } catch (e: unknown) {
+      console.error(e)
+      set({ error: errorMessage(e) })
+      return []
+    }
+  },
+
+  showMore: async (nodeId, prompt) => {
     const { topicRootId, graph, flowNodes } = get()
     if (!topicRootId) return
     set({ loading: true, error: null, flowNodes: enrichFlowNodes(flowNodes, graph, true) })
@@ -294,7 +241,7 @@ export const useTopicGraphStore = create<TopicGraphStore>((set, get) => ({
       const data = await client.request<{ showMore: TopicGraph }>(SHOW_MORE, {
         topicRootId,
         nodeId,
-        nodeTitle,
+        prompt,
       })
       const { nodes, edges } = toReactFlowElements(data.showMore)
       set({
@@ -304,11 +251,11 @@ export const useTopicGraphStore = create<TopicGraphStore>((set, get) => ({
       })
     } catch (e: unknown) {
       console.error(e)
-      set({ error: errorMessage(e) })
-    } finally {
       const { flowNodes: currentNodes, graph: currentGraph } = get()
-      set({ loading: false, flowNodes: enrichFlowNodes(currentNodes, currentGraph, false) })
+      set({ error: errorMessage(e), loading: false, flowNodes: enrichFlowNodes(currentNodes, currentGraph, false) })
+      return
     }
+    set({ loading: false })
   },
 
   loadMoreResources: async (nodeId) => {

@@ -49,6 +49,7 @@ pub async fn assemble_topic_graph(
         movement: None,
         is_wildcard: false,
         visit_count: 0,
+        depth: 0,
     };
 
     // 5. Tag nodes with state
@@ -85,6 +86,7 @@ pub async fn assemble_topic_graph(
             movement,
             is_wildcard: false,
             visit_count: node.visit_count,
+            depth: node.depth,
         }
     }));
 
@@ -115,6 +117,17 @@ pub async fn assemble_topic_graph(
             }
         })
         .collect();
+
+    // 7. Sort proposal nodes: highest incoming edge weight first
+    nodes.sort_by(|a, b| {
+        if a.state == NodeState::Proposal && b.state == NodeState::Proposal {
+            let w_a = edges.iter().find(|e| e.target_id == a.id).map(|e| e.weight).unwrap_or(0.0);
+            let w_b = edges.iter().find(|e| e.target_id == b.id).map(|e| e.weight).unwrap_or(0.0);
+            w_b.partial_cmp(&w_a).unwrap_or(std::cmp::Ordering::Equal)
+        } else {
+            std::cmp::Ordering::Equal
+        }
+    });
 
     Ok(TopicGraph {
         topic_root: subgraph.topic_root,

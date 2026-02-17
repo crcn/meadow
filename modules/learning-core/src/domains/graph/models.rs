@@ -6,43 +6,84 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Movement {
-    Supports,
-    Deepens,
-    RelatesTo,
-    Applies,
-    Contextualizes,
+    Deeper,
+    Broader,
+    Foundation,
+    Practice,
+    Inspire,
 }
 
 impl Movement {
     pub fn as_relationship_type(&self) -> &'static str {
         match self {
-            Movement::Supports => "SUPPORTS",
-            Movement::Deepens => "DEEPENS",
-            Movement::RelatesTo => "RELATES_TO",
-            Movement::Applies => "APPLIES",
-            Movement::Contextualizes => "CONTEXTUALIZES",
+            Movement::Deeper => "DEEPER",
+            Movement::Broader => "BROADER",
+            Movement::Foundation => "FOUNDATION",
+            Movement::Practice => "PRACTICE",
+            Movement::Inspire => "INSPIRE",
         }
     }
 
+    /// Parse a relationship type string into a Movement.
+    /// Accepts both new names and legacy names for backward compatibility
+    /// with existing Memgraph edges.
     pub fn from_relationship_type(s: &str) -> Option<Self> {
         match s {
-            "SUPPORTS" => Some(Movement::Supports),
-            "DEEPENS" => Some(Movement::Deepens),
-            "RELATES_TO" => Some(Movement::RelatesTo),
-            "APPLIES" => Some(Movement::Applies),
-            "CONTEXTUALIZES" => Some(Movement::Contextualizes),
+            // New canonical names
+            "DEEPER" => Some(Movement::Deeper),
+            "BROADER" => Some(Movement::Broader),
+            "FOUNDATION" => Some(Movement::Foundation),
+            "PRACTICE" => Some(Movement::Practice),
+            "INSPIRE" => Some(Movement::Inspire),
+            // Legacy names (existing edges in Memgraph)
+            "DEEPENS" => Some(Movement::Deeper),
+            "SUPPORTS" => Some(Movement::Foundation),
+            "RELATES_TO" => Some(Movement::Broader),
+            "APPLIES" => Some(Movement::Practice),
+            "CONTEXTUALIZES" => Some(Movement::Broader),
             _ => None,
         }
     }
 
     pub fn all() -> &'static [Movement] {
         &[
-            Movement::Supports,
-            Movement::Deepens,
-            Movement::RelatesTo,
-            Movement::Applies,
-            Movement::Contextualizes,
+            Movement::Deeper,
+            Movement::Broader,
+            Movement::Foundation,
+            Movement::Practice,
+            Movement::Inspire,
         ]
+    }
+
+    /// All relationship type strings to query, including legacy names
+    /// for backward compatibility with existing Memgraph data.
+    pub fn all_relationship_types() -> &'static [(&'static str, Movement)] {
+        &[
+            // New
+            ("DEEPER", Movement::Deeper),
+            ("BROADER", Movement::Broader),
+            ("FOUNDATION", Movement::Foundation),
+            ("PRACTICE", Movement::Practice),
+            ("INSPIRE", Movement::Inspire),
+            // Legacy
+            ("DEEPENS", Movement::Deeper),
+            ("SUPPORTS", Movement::Foundation),
+            ("RELATES_TO", Movement::Broader),
+            ("APPLIES", Movement::Practice),
+            ("CONTEXTUALIZES", Movement::Broader),
+        ]
+    }
+
+    /// All Cypher relationship type names that map to this movement
+    /// (new + legacy). Used for queries that need to match existing edges.
+    pub fn cypher_types(&self) -> &'static [&'static str] {
+        match self {
+            Movement::Deeper => &["DEEPER", "DEEPENS"],
+            Movement::Broader => &["BROADER", "RELATES_TO", "CONTEXTUALIZES"],
+            Movement::Foundation => &["FOUNDATION", "SUPPORTS"],
+            Movement::Practice => &["PRACTICE", "APPLIES"],
+            Movement::Inspire => &["INSPIRE"],
+        }
     }
 }
 
@@ -93,6 +134,7 @@ pub struct Node {
     pub topic_root_id: Uuid,
     pub resources: Vec<Resource>,
     pub visit_count: i64,
+    pub depth: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -127,6 +169,7 @@ pub struct GraphNode {
     pub movement: Option<Movement>,
     pub is_wildcard: bool,
     pub visit_count: i64,
+    pub depth: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

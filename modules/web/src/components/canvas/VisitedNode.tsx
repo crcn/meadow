@@ -6,11 +6,11 @@ interface VisitedNodeProps {
 }
 
 const MOVEMENT_LABELS: Record<string, string> = {
-  SUPPORTS: 'Foundation',
-  DEEPENS: 'Going deeper',
-  RELATES_TO: 'Related',
-  APPLIES: 'Applied',
-  CONTEXTUALIZES: 'Context',
+  DEEPER: 'Go deeper',
+  BROADER: 'Explore',
+  FOUNDATION: 'Foundation',
+  PRACTICE: 'Practice',
+  INSPIRE: 'Inspire',
 }
 
 function extractYoutubeId(url: string | null): string | null {
@@ -26,7 +26,7 @@ export function VisitedNode({ data, selected }: VisitedNodeProps & { selected?: 
   const videoId = youtubeResource ? (youtubeResource.youtubeId || extractYoutubeId(youtubeResource.url)) : null
 
   return (
-    <div className={`px-5 py-4 rounded-xl bg-[#faf5ef] text-left min-w-[180px] max-w-[260px] shadow-[0_2px_8px_rgba(0,0,0,0.06),0_0_0_1px_rgba(0,0,0,0.03)] transition-shadow hover:shadow-[0_4px_16px_rgba(0,0,0,0.1),0_0_0_1px_rgba(0,0,0,0.05)] ${selected ? 'border-2 border-meadow-accent' : 'border border-[#ede0d0]'}`}>
+    <div className={`px-5 py-4 rounded-xl border border-[#ede0d0] bg-[#faf5ef] text-left min-w-[180px] max-w-[260px] shadow-[0_2px_8px_rgba(0,0,0,0.06),0_0_0_1px_rgba(0,0,0,0.03)] transition-shadow hover:shadow-[0_4px_16px_rgba(0,0,0,0.1),0_0_0_1px_rgba(0,0,0,0.05)] ${selected ? 'ring-2 ring-meadow-accent ring-offset-2' : ''}`}>
       <div className="flex gap-1.5 flex-wrap mb-2">
         {movementLabel && <span className="inline-block text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#f5e6d4] text-[#8c6a4a]">{movementLabel}</span>}
       </div>

@@ -1426,6 +1426,7 @@ dependencies = [
  "jsonwebtoken",
  "neo4rs",
  "reqwest",
+ "schemars",
  "serde",
  "serde_json",
  "sha2",

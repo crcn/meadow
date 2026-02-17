@@ -16,6 +16,24 @@ pub async fn traverse(
     to_node_id: Uuid,
     movement: Movement,
 ) -> Result<TopicGraph> {
+    // Validate: target node must exist and belong to this topic
+    let target_node = queries::get_node(graph, to_node_id)
+        .await?
+        .ok_or_else(|| Error::Validation("Target node does not exist".into()))?;
+
+    if target_node.topic_root_id != topic_root_id {
+        return Err(Error::Validation("Target node does not belong to this topic".into()));
+    }
+
+    // Validate: an edge of this movement type must exist between from and to
+    let edge_ok = queries::edge_exists(graph, from_node_id, to_node_id, movement).await?;
+    if !edge_ok {
+        return Err(Error::Validation(format!(
+            "No {} edge exists from the current node to the target node",
+            movement.as_relationship_type()
+        )));
+    }
+
     // Update edge weight in Memgraph
     queries::increment_traversal(graph, from_node_id, to_node_id, movement).await?;
 
@@ -61,6 +79,11 @@ pub async fn back_up(
     .await?
     .ok_or_else(|| Error::NotFound("No active position".into()))?;
 
+    // Cannot back up from the topic root
+    if current == topic_root_id {
+        return Err(Error::Validation("Already at the topic root — cannot back up further".into()));
+    }
+
     // Get the previous node from most recent non-backtrack traversal
     let previous: Uuid = sqlx::query_scalar(
         "SELECT previous_node_id FROM traversal_history WHERE member_id = $1 AND topic_root_id = $2 AND node_id = $3 AND is_backtrack = false AND previous_node_id IS NOT NULL ORDER BY created_at DESC LIMIT 1"
@@ -70,7 +93,7 @@ pub async fn back_up(
     .bind(current)
     .fetch_optional(db)
     .await?
-    .ok_or_else(|| Error::NotFound("No previous node to back up to".into()))?;
+    .ok_or_else(|| Error::Validation("No previous node to back up to".into()))?;
 
     // Find the movement type of the edge we're backing away from
     let movement_str: Option<String> = sqlx::query_scalar(

@@ -7,11 +7,11 @@ interface CurrentNodeProps {
 }
 
 const MOVEMENT_LABELS: Record<string, string> = {
-  SUPPORTS: 'Foundation',
-  DEEPENS: 'Going deeper',
-  RELATES_TO: 'Related',
-  APPLIES: 'Applied',
-  CONTEXTUALIZES: 'Context',
+  DEEPER: 'Go deeper',
+  BROADER: 'Explore',
+  FOUNDATION: 'Foundation',
+  PRACTICE: 'Practice',
+  INSPIRE: 'Inspire',
 }
 
 function extractYoutubeId(url: string | null): string | null {
@@ -20,7 +20,7 @@ function extractYoutubeId(url: string | null): string | null {
   return match ? match[1] : null
 }
 
-export function CurrentNode({ data }: CurrentNodeProps) {
+export function CurrentNode({ data, selected }: CurrentNodeProps & { selected?: boolean }) {
   const movementLabel = data.movement ? MOVEMENT_LABELS[data.movement] : null
   const noteCount = data.notes?.length || 0
   const youtubeResource = data.resources?.find((r) => r.youtubeId || extractYoutubeId(r.url))
@@ -28,11 +28,11 @@ export function CurrentNode({ data }: CurrentNodeProps) {
   const otherResourceCount = data.resources?.filter((r) => r !== youtubeResource).length || 0
 
   const handleShowMore = () => {
-    useTopicGraphStore.getState().showMore(data.id, data.title)
+    useTopicGraphStore.getState().showMore(data.id)
   }
 
   return (
-    <div className="px-5 py-4 rounded-xl border-2 border-meadow-accent bg-gradient-to-b from-[#fff9f0] to-white text-left min-w-[300px] max-w-[360px] shadow-[0_2px_8px_rgba(0,0,0,0.06),0_0_0_1px_rgba(0,0,0,0.03)] transition-shadow hover:shadow-[0_4px_16px_rgba(0,0,0,0.1),0_0_0_1px_rgba(0,0,0,0.05)]">
+    <div className={`px-5 py-4 rounded-xl border-2 border-meadow-accent bg-gradient-to-b from-[#fff9f0] to-white text-left min-w-[300px] max-w-[360px] shadow-[0_2px_8px_rgba(0,0,0,0.06),0_0_0_1px_rgba(0,0,0,0.03)] transition-shadow hover:shadow-[0_4px_16px_rgba(0,0,0,0.1),0_0_0_1px_rgba(0,0,0,0.05)] ${selected ? 'ring-2 ring-meadow-accent ring-offset-2' : ''}`}>
       <div className="flex gap-1.5 flex-wrap mb-2">
         {movementLabel && <span className="inline-block text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#fff0db] text-[#a0632a]">{movementLabel}</span>}
         <span className="inline-block text-[10px] font-medium px-2 py-0.5 rounded-full bg-meadow-accent text-white">You are here</span>

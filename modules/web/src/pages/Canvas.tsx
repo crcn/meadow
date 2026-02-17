@@ -56,7 +56,7 @@ function CanvasInner({ topicRootId }: { topicRootId: string }) {
           onClick={backUp}
           disabled={loading}
         >
-          &hookleftarrow; Back up
+          &#x21A9; Back up
         </button>
       </div>
 

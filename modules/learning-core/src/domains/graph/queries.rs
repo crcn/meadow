@@ -56,19 +56,21 @@ pub async fn create_node(
     topic_root_id: Uuid,
     resources: &[Resource],
     embedding: &[f32],
+    depth: i32,
 ) -> Result<Node> {
     let resources_json = serde_json::to_string(resources)
         .map_err(|e| Error::Internal(e.to_string()))?;
 
     let q = query(
-        "CREATE (n:Node {id: $id, title: $title, description: $description, topic_root_id: $topic_root_id, resources: $resources, embedding: $embedding, visit_count: 0, created_at: datetime()}) RETURN n.id"
+        "CREATE (n:Node {id: $id, title: $title, description: $description, topic_root_id: $topic_root_id, resources: $resources, embedding: $embedding, visit_count: 0, depth: $depth, created_at: datetime()}) RETURN n.id"
     )
     .param("id", id.to_string())
     .param("title", title)
     .param("description", description)
     .param("topic_root_id", topic_root_id.to_string())
     .param("resources", resources_json)
-    .param("embedding", embedding.to_vec());
+    .param("embedding", embedding.to_vec())
+    .param("depth", depth as i64);
 
     graph.run(q).await?;
 
@@ -79,6 +81,7 @@ pub async fn create_node(
         topic_root_id,
         resources: resources.to_vec(),
         visit_count: 0,
+        depth,
     })
 }
 
@@ -104,7 +107,7 @@ pub async fn update_node_resources(
 pub async fn get_node(graph: &Graph, id: Uuid) -> Result<Option<Node>> {
     let mut result = graph
         .execute(
-            query("MATCH (n:Node {id: $id}) RETURN n.id AS id, n.title AS title, n.description AS description, n.topic_root_id AS topic_root_id, n.resources AS resources, n.visit_count AS visit_count")
+            query("MATCH (n:Node {id: $id}) RETURN n.id AS id, n.title AS title, n.description AS description, n.topic_root_id AS topic_root_id, n.resources AS resources, n.visit_count AS visit_count, n.depth AS depth")
                 .param("id", id.to_string()),
         )
         .await?;
@@ -113,6 +116,7 @@ pub async fn get_node(graph: &Graph, id: Uuid) -> Result<Option<Node>> {
         let id_str: String = row.get("id")?;
         let topic_root_id_str: String = row.get("topic_root_id")?;
         let resources_str: String = row.get("resources")?;
+        let depth: i64 = row.get::<i64>("depth").unwrap_or(0);
 
         Ok(Some(Node {
             id: id_str.parse().map_err(|_| Error::Internal("invalid uuid".into()))?,
@@ -121,6 +125,7 @@ pub async fn get_node(graph: &Graph, id: Uuid) -> Result<Option<Node>> {
             topic_root_id: topic_root_id_str.parse().map_err(|_| Error::Internal("invalid uuid".into()))?,
             resources: serde_json::from_str(&resources_str).unwrap_or_default(),
             visit_count: row.get("visit_count")?,
+            depth: depth as i32,
         }))
     } else {
         Ok(None)
@@ -175,18 +180,20 @@ pub async fn increment_traversal(
     target_id: Uuid,
     movement: Movement,
 ) -> Result<()> {
-    let rel_type = movement.as_relationship_type();
-    let cypher = format!(
-        "MATCH (a {{id: $source_id}})-[r:{rel_type}]->(b {{id: $target_id}}) SET r.traversals = r.traversals + 1, r.weight = CASE WHEN (r.traversals + 1 + r.backups) = 0 THEN 0.0 ELSE toFloat(CASE WHEN (r.traversals + 1 - 2 * r.backups) < 0 THEN 0 ELSE r.traversals + 1 - 2 * r.backups END) / toFloat(r.traversals + 1 + r.backups) END"
-    );
+    // Try all relationship type names (new + legacy) for this movement
+    for rel_type in movement.cypher_types() {
+        let cypher = format!(
+            "MATCH (a {{id: $source_id}})-[r:{rel_type}]->(b {{id: $target_id}}) SET r.traversals = r.traversals + 1, r.weight = CASE WHEN (r.traversals + 1 + r.backups) = 0 THEN 0.0 ELSE toFloat(CASE WHEN (r.traversals + 1 - 2 * r.backups) < 0 THEN 0 ELSE r.traversals + 1 - 2 * r.backups END) / toFloat(r.traversals + 1 + r.backups) END"
+        );
 
-    graph
-        .run(
-            query(&cypher)
-                .param("source_id", source_id.to_string())
-                .param("target_id", target_id.to_string()),
-        )
-        .await?;
+        graph
+            .run(
+                query(&cypher)
+                    .param("source_id", source_id.to_string())
+                    .param("target_id", target_id.to_string()),
+            )
+            .await?;
+    }
 
     // Increment visit count on target node
     graph
@@ -205,18 +212,20 @@ pub async fn increment_backup(
     target_id: Uuid,
     movement: Movement,
 ) -> Result<()> {
-    let rel_type = movement.as_relationship_type();
-    let cypher = format!(
-        "MATCH (a {{id: $source_id}})-[r:{rel_type}]->(b {{id: $target_id}}) SET r.backups = r.backups + 1, r.weight = CASE WHEN (r.traversals + r.backups + 1) = 0 THEN 0.0 ELSE toFloat(CASE WHEN (r.traversals - 2 * (r.backups + 1)) < 0 THEN 0 ELSE r.traversals - 2 * (r.backups + 1) END) / toFloat(r.traversals + r.backups + 1) END"
-    );
+    // Try all relationship type names (new + legacy) for this movement
+    for rel_type in movement.cypher_types() {
+        let cypher = format!(
+            "MATCH (a {{id: $source_id}})-[r:{rel_type}]->(b {{id: $target_id}}) SET r.backups = r.backups + 1, r.weight = CASE WHEN (r.traversals + r.backups + 1) = 0 THEN 0.0 ELSE toFloat(CASE WHEN (r.traversals - 2 * (r.backups + 1)) < 0 THEN 0 ELSE r.traversals - 2 * (r.backups + 1) END) / toFloat(r.traversals + r.backups + 1) END"
+        );
 
-    graph
-        .run(
-            query(&cypher)
-                .param("source_id", source_id.to_string())
-                .param("target_id", target_id.to_string()),
-        )
-        .await?;
+        graph
+            .run(
+                query(&cypher)
+                    .param("source_id", source_id.to_string())
+                    .param("target_id", target_id.to_string()),
+            )
+            .await?;
+    }
 
     Ok(())
 }
@@ -255,7 +264,7 @@ pub async fn fetch_visible_subgraph(
     // Fetch all visited/current nodes
     for id_str in &all_ids {
         let mut result = graph.execute(
-            query("MATCH (n:Node {id: $id}) RETURN n.id AS id, n.title AS title, n.description AS description, n.topic_root_id AS topic_root_id, n.resources AS resources, n.visit_count AS visit_count")
+            query("MATCH (n:Node {id: $id}) RETURN n.id AS id, n.title AS title, n.description AS description, n.topic_root_id AS topic_root_id, n.resources AS resources, n.visit_count AS visit_count, n.depth AS depth")
                 .param("id", id_str.as_str())
         ).await?;
 
@@ -263,6 +272,7 @@ pub async fn fetch_visible_subgraph(
             let node_id: String = row.get("id")?;
             let trid: String = row.get("topic_root_id")?;
             let resources_str: String = row.get("resources")?;
+            let depth: i64 = row.get::<i64>("depth").unwrap_or(0);
 
             nodes.push(Node {
                 id: node_id.parse().map_err(|_| Error::Internal("invalid uuid".into()))?,
@@ -271,17 +281,17 @@ pub async fn fetch_visible_subgraph(
                 topic_root_id: trid.parse().map_err(|_| Error::Internal("invalid uuid".into()))?,
                 resources: serde_json::from_str(&resources_str).unwrap_or_default(),
                 visit_count: row.get("visit_count")?,
+                depth: depth as i32,
             });
         }
     }
 
     // Fetch edges between visited nodes and from visited nodes to proposals
-    for movement in Movement::all() {
-        let rel_type = movement.as_relationship_type();
-
+    // Query both new and legacy relationship types for backward compatibility
+    for (rel_type, movement) in Movement::all_relationship_types() {
         // Edges from visited/current nodes to any node
         let cypher = format!(
-            "MATCH (a)-[r:{rel_type}]->(b) WHERE a.id IN $ids RETURN a.id AS source_id, b.id AS target_id, r.weight AS weight, r.traversals AS traversals, r.backups AS backups, b.title AS b_title, b.description AS b_description, b.topic_root_id AS b_topic_root_id, b.resources AS b_resources, b.visit_count AS b_visit_count"
+            "MATCH (a)-[r:{rel_type}]->(b) WHERE a.id IN $ids RETURN a.id AS source_id, b.id AS target_id, r.weight AS weight, r.traversals AS traversals, r.backups AS backups, b.title AS b_title, b.description AS b_description, b.topic_root_id AS b_topic_root_id, b.resources AS b_resources, b.visit_count AS b_visit_count, b.depth AS b_depth"
         );
 
         let mut result = graph.execute(
@@ -306,6 +316,7 @@ pub async fn fetch_visible_subgraph(
             if !nodes.iter().any(|n| n.id == target_id) {
                 let trid: String = row.get("b_topic_root_id")?;
                 let resources_str: String = row.get("b_resources")?;
+                let b_depth: i64 = row.get::<i64>("b_depth").unwrap_or(0);
 
                 nodes.push(Node {
                     id: target_id,
@@ -314,6 +325,7 @@ pub async fn fetch_visible_subgraph(
                     topic_root_id: trid.parse().map_err(|_| Error::Internal("invalid uuid".into()))?,
                     resources: serde_json::from_str(&resources_str).unwrap_or_default(),
                     visit_count: row.get("b_visit_count")?,
+                    depth: b_depth as i32,
                 });
             }
         }
@@ -321,7 +333,7 @@ pub async fn fetch_visible_subgraph(
 
     // Also fetch STARTS_WITH edges from topic root
     let mut starts_result = graph.execute(
-        query("MATCH (t:TopicRoot {id: $id})-[:STARTS_WITH]->(n:Node) RETURN n.id AS id, n.title AS title, n.description AS description, n.topic_root_id AS topic_root_id, n.resources AS resources, n.visit_count AS visit_count")
+        query("MATCH (t:TopicRoot {id: $id})-[:STARTS_WITH]->(n:Node) RETURN n.id AS id, n.title AS title, n.description AS description, n.topic_root_id AS topic_root_id, n.resources AS resources, n.visit_count AS visit_count, n.depth AS depth")
             .param("id", topic_root_id.to_string())
     ).await?;
 
@@ -332,6 +344,7 @@ pub async fn fetch_visible_subgraph(
         if !nodes.iter().any(|n| n.id == node_id) {
             let trid: String = row.get("topic_root_id")?;
             let resources_str: String = row.get("resources")?;
+            let depth: i64 = row.get::<i64>("depth").unwrap_or(1);
 
             nodes.push(Node {
                 id: node_id,
@@ -340,15 +353,16 @@ pub async fn fetch_visible_subgraph(
                 topic_root_id: trid.parse().map_err(|_| Error::Internal("invalid uuid".into()))?,
                 resources: serde_json::from_str(&resources_str).unwrap_or_default(),
                 visit_count: row.get("visit_count")?,
+                depth: depth as i32,
             });
         }
 
-        // Add a SUPPORTS edge from root to starting point for rendering
+        // Add a FOUNDATION edge from root to starting point for rendering
         if !edges.iter().any(|e| e.source_id == topic_root_id && e.target_id == node_id) {
             edges.push(Edge {
                 source_id: topic_root_id,
                 target_id: node_id,
-                movement: Movement::Supports,
+                movement: Movement::Foundation,
                 weight: 0.0,
                 traversals: 0,
                 backups: 0,
@@ -397,7 +411,7 @@ pub async fn vector_search_nodes(
     limit: usize,
 ) -> Result<Vec<(Node, f64)>> {
     let mut result = graph.execute(
-        query("CALL vector_search.search('node_embedding', $limit, $embedding) YIELD node, similarity WHERE node.topic_root_id = $topic_root_id RETURN node.id AS id, node.title AS title, node.description AS description, node.topic_root_id AS topic_root_id, node.resources AS resources, node.visit_count AS visit_count, similarity")
+        query("CALL vector_search.search('node_embedding', $limit, $embedding) YIELD node, similarity WITH node, similarity WHERE node.topic_root_id = $topic_root_id RETURN node.id AS id, node.title AS title, node.description AS description, node.topic_root_id AS topic_root_id, node.resources AS resources, node.visit_count AS visit_count, node.depth AS depth, similarity")
             .param("embedding", embedding.to_vec())
             .param("topic_root_id", topic_root_id.to_string())
             .param("limit", limit as i64)
@@ -409,6 +423,7 @@ pub async fn vector_search_nodes(
         let trid: String = row.get("topic_root_id")?;
         let resources_str: String = row.get("resources")?;
         let similarity: f64 = row.get("similarity")?;
+        let depth: i64 = row.get::<i64>("depth").unwrap_or(0);
 
         results.push((
             Node {
@@ -418,10 +433,73 @@ pub async fn vector_search_nodes(
                 topic_root_id: trid.parse().map_err(|_| Error::Internal("invalid uuid".into()))?,
                 resources: serde_json::from_str(&resources_str).unwrap_or_default(),
                 visit_count: row.get("visit_count")?,
+                depth: depth as i32,
             },
             similarity,
         ));
     }
 
     Ok(results)
+}
+
+/// Check if an edge of the given movement type exists between two nodes.
+pub async fn edge_exists(
+    graph: &Graph,
+    source_id: Uuid,
+    target_id: Uuid,
+    movement: Movement,
+) -> Result<bool> {
+    for rel_type in movement.cypher_types() {
+        let cypher = format!(
+            "MATCH (a {{id: $source_id}})-[r:{rel_type}]->(b {{id: $target_id}}) RETURN count(r) AS cnt"
+        );
+
+        let mut result = graph
+            .execute(
+                query(&cypher)
+                    .param("source_id", source_id.to_string())
+                    .param("target_id", target_id.to_string()),
+            )
+            .await?;
+
+        if let Some(row) = result.next().await? {
+            let cnt: i64 = row.get("cnt")?;
+            if cnt > 0 {
+                return Ok(true);
+            }
+        }
+    }
+
+    Ok(false)
+}
+
+/// Fetch the learner's traversal history ordered by time (earliest first).
+pub async fn fetch_traversal_path(
+    db: &sqlx::PgPool,
+    member_id: Uuid,
+    topic_root_id: Uuid,
+) -> Result<Vec<TraversalStep>> {
+    let rows: Vec<TraversalStepRow> = sqlx::query_as(
+        "SELECT node_id, movement_type FROM traversal_history WHERE member_id = $1 AND topic_root_id = $2 ORDER BY created_at ASC"
+    )
+    .bind(member_id)
+    .bind(topic_root_id)
+    .fetch_all(db)
+    .await?;
+
+    Ok(rows.into_iter().map(|r| TraversalStep {
+        node_id: r.node_id,
+        movement: r.movement_type,
+    }).collect())
+}
+
+pub struct TraversalStep {
+    pub node_id: Uuid,
+    pub movement: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct TraversalStepRow {
+    node_id: Uuid,
+    movement_type: Option<String>,
 }

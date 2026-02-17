@@ -58,6 +58,11 @@ impl MutationRoot {
         ctx: &Context<'_>,
         interest: String,
     ) -> Result<TopicGraph> {
+        let interest = interest.trim().to_string();
+        if interest.is_empty() {
+            return Err(async_graphql::Error::new("Interest cannot be empty"));
+        }
+
         let member_id = get_member_id(ctx)?;
         let state = ctx.data::<AppState>()?;
 
@@ -126,7 +131,6 @@ impl MutationRoot {
         &self,
         ctx: &Context<'_>,
         topic_root_id: ID,
-        from_node_id: ID,
         to_node_id: ID,
         movement: Movement,
     ) -> Result<TopicGraph> {
@@ -134,8 +138,17 @@ impl MutationRoot {
         let state = ctx.data::<AppState>()?;
 
         let topic_root_id: Uuid = topic_root_id.parse()?;
-        let from_node_id: Uuid = from_node_id.parse()?;
         let to_node_id: Uuid = to_node_id.parse()?;
+
+        // Look up the learner's current position server-side
+        let from_node_id: Uuid = sqlx::query_scalar(
+            "SELECT current_node_id FROM learner_position WHERE member_id = $1 AND topic_root_id = $2"
+        )
+        .bind(member_id)
+        .bind(topic_root_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| async_graphql::Error::new("No active position in this topic"))?;
 
         let graph = learning_core::domains::graph::traversal::traverse(
             &state.graph,
@@ -208,18 +221,28 @@ impl MutationRoot {
 
     // ─── Proposals ───────────────────────────────────────────────────
 
-    /// Generate more proposals from the current node via AI investigation.
+    /// Generate more proposals from a node via AI investigation.
+    /// Optionally pass a `prompt` to steer the direction of proposals.
     async fn show_more(
         &self,
         ctx: &Context<'_>,
         topic_root_id: ID,
         node_id: ID,
-        node_title: String,
+        prompt: Option<String>,
     ) -> Result<TopicGraph> {
         let member_id = get_member_id(ctx)?;
         let state = ctx.data::<AppState>()?;
         let topic_root_id: Uuid = topic_root_id.parse()?;
         let node_id: Uuid = node_id.parse()?;
+
+        if node_id == topic_root_id {
+            return Err(async_graphql::Error::new("Cannot generate proposals from the topic root — traverse to a node first"));
+        }
+
+        // Look up the node title server-side
+        let node = learning_core::domains::graph::queries::get_node(&state.graph, node_id)
+            .await?
+            .ok_or_else(|| async_graphql::Error::new("Node not found"))?;
 
         let ai_agent = create_ai_agent();
         let embed_agent = create_embed_agent();
@@ -232,10 +255,11 @@ impl MutationRoot {
             member_id,
             topic_root_id,
             node_id,
-            &node_title,
+            &node.title,
             &state.tavily_api_key,
             &state.youtube_api_key,
             state.ai_max_turns,
+            prompt.as_deref(),
         )
         .await?;
 
@@ -425,7 +449,7 @@ impl MutationRoot {
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-fn create_ai_agent() -> ai_client::OpenAi {
+pub fn create_ai_agent() -> ai_client::OpenAi {
     ai_client::OpenAi::from_env("gpt-4o")
         .expect("OPENAI_API_KEY must be set")
 }

@@ -1,5 +1,7 @@
-use ai_client::traits::{Agent, Message, PromptBuilder};
+use ai_client::traits::{Agent, PromptBuilder};
+use ai_client::OpenAi;
 use neo4rs::Graph;
+use schemars::JsonSchema;
 use std::sync::Arc;
 
 use super::tools::{
@@ -9,16 +11,24 @@ use super::tools::{
 use crate::domains::graph::models::Resource;
 use crate::error::{Error, Result};
 
-#[derive(Debug, Clone, serde::Deserialize)]
+/// Wrapper for structured output extraction (OpenAI requires a top-level object, not an array).
+#[derive(Debug, Clone, serde::Deserialize, JsonSchema)]
+pub struct ProposalResponse {
+    pub proposals: Vec<ProposedNode>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, JsonSchema)]
 pub struct ProposedNode {
     pub title: String,
     pub description: String,
+    /// One of: DEEPER, BROADER, FOUNDATION, PRACTICE, INSPIRE
     pub movement: String,
     pub resources: Vec<ProposedResource>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, JsonSchema)]
 pub struct ProposedResource {
+    /// The resource type, e.g. "video", "article", "course"
     #[serde(rename = "type")]
     pub resource_type: String,
     pub youtube_id: Option<String>,
@@ -66,14 +76,19 @@ fn extract_youtube_id(url: Option<&str>) -> Option<String> {
 
 /// Run the AI investigation agent with all tools configured.
 /// Returns a list of proposed nodes with resources.
-pub async fn investigate<A: Agent>(
-    agent: &A,
+///
+/// Two-phase approach:
+/// 1. Multi-turn agent loop with tools (search, YouTube, existing nodes) — returns freeform text
+/// 2. Structured output extraction — guarantees valid typed JSON via OpenAI's json_schema mode
+pub async fn investigate(
+    agent: &OpenAi,
     memgraph: Arc<Graph>,
     tavily_api_key: &str,
     youtube_api_key: &str,
     system_prompt: &str,
     user_prompt: &str,
     max_turns: usize,
+    steered: bool,
 ) -> Result<Vec<ProposedNode>> {
     tracing::info!(
         max_turns = max_turns,
@@ -81,20 +96,21 @@ pub async fn investigate<A: Agent>(
         "Starting AI investigation"
     );
 
-    let mut agent = agent
+    let mut tool_agent = agent
         .clone()
         .tool(TavilySearchTool::new(tavily_api_key.to_string()))
         .tool(ExistingNodesTool::new(memgraph));
 
     if !youtube_api_key.is_empty() {
-        agent = agent
+        tool_agent = tool_agent
             .tool(YoutubeSearchTool::new(youtube_api_key.to_string()))
             .tool(YoutubeDetailsTool::new(youtube_api_key.to_string()));
     }
 
     let start = std::time::Instant::now();
 
-    let response = agent
+    // Phase 1: Multi-turn tool-calling investigation
+    let research = tool_agent
         .prompt(user_prompt)
         .preamble(system_prompt)
         .multi_turn(max_turns)
@@ -103,36 +119,47 @@ pub async fn investigate<A: Agent>(
         .map_err(|e| Error::Ai(e.to_string()))?;
 
     tracing::info!(
-        response_len = response.len(),
+        research_len = research.len(),
         elapsed_ms = start.elapsed().as_millis() as u64,
-        "AI investigation complete"
+        "AI investigation complete, extracting structured proposals"
     );
 
-    // Parse JSON array from the response — retry once if the AI didn't return JSON
-    let proposals = match parse_proposals(&response) {
-        Ok(p) => p,
-        Err(_) => {
-            tracing::warn!("First parse failed, asking AI to reformat as JSON");
-            let retry_response = agent
-                .prompt("Your previous response did not contain a valid JSON array. Please reformat your findings as a JSON array exactly matching this schema:\n[{\"title\": \"...\", \"description\": \"...\", \"movement\": \"SUPPORTS|DEEPENS|RELATES_TO|APPLIES|CONTEXTUALIZES\", \"resources\": [{\"type\": \"...\", \"url\": \"...\", \"title\": \"...\", \"channel\": null, \"reason\": \"...\"}]}]\nReturn ONLY the JSON array, no other text.")
-                .preamble(system_prompt)
-                .messages(vec![
-                    Message::user(user_prompt.to_string()),
-                    Message::assistant(response.clone()),
-                ])
-                .send()
-                .await
-                .map_err(|e| Error::Ai(e.to_string()))?;
-
-            tracing::info!(
-                retry_response_len = retry_response.len(),
-                "AI reformat response received"
-            );
-            parse_proposals(&retry_response)?
-        }
+    // Phase 2: Structured output extraction — guaranteed valid JSON
+    let extraction_prompt = if steered {
+        format!(
+            "Based on the following research findings, extract exactly 3 learning node proposals \
+             matching the learner's requested direction.\n\n\
+             Research findings:\n{}\n\n\
+             Pick the BEST-FIT movement type for each proposal (DEEPER, BROADER, FOUNDATION, PRACTICE, or INSPIRE). \
+             Any combination is allowed — choose what fits the learner's request.\n\n\
+             Each proposal needs: title, description, movement (DEEPER/BROADER/FOUNDATION/PRACTICE/INSPIRE), and resources.",
+            research
+        )
+    } else {
+        format!(
+            "Based on the following research findings, extract exactly 3 learning node proposals.\n\n\
+             Research findings:\n{}\n\n\
+             Extract exactly 3 proposals with these movement types:\n\
+             - 1x DEEPER (must be harder/more advanced than the current node)\n\
+             - 1x PRACTICE (a hands-on exercise, project, or challenge)\n\
+             - 1x BROADER, FOUNDATION, or INSPIRE (lateral exploration, prerequisite backfill, or inspirational content)\n\n\
+             Each proposal needs: title, description, movement (DEEPER/BROADER/FOUNDATION/PRACTICE/INSPIRE), and resources.",
+            research
+        )
     };
 
-    for (i, p) in proposals.iter().enumerate() {
+    let response: ProposalResponse = agent
+        .extract(agent.model(), system_prompt, &extraction_prompt)
+        .await
+        .map_err(|e| Error::Ai(e.to_string()))?;
+
+    tracing::info!(
+        elapsed_ms = start.elapsed().as_millis() as u64,
+        proposals = response.proposals.len(),
+        "Structured extraction complete"
+    );
+
+    for (i, p) in response.proposals.iter().enumerate() {
         tracing::info!(
             index = i,
             title = %p.title,
@@ -142,129 +169,12 @@ pub async fn investigate<A: Agent>(
         );
     }
 
-    Ok(proposals)
-}
-
-fn parse_proposals(response: &str) -> Result<Vec<ProposedNode>> {
-    // Find JSON array in the response (it might be wrapped in markdown code blocks)
-    let json_str = match extract_json_array(response) {
-        Some(s) => s,
-        None => {
-            tracing::error!(
-                response_len = response.len(),
-                response_preview = %&response[..response.len().min(500)],
-                "No JSON array found in agent response"
-            );
-            return Err(Error::Ai("No JSON array found in agent response".into()));
-        }
-    };
-
-    serde_json::from_str(&json_str).map_err(|e| {
-        tracing::error!(
-            json_preview = %&json_str[..json_str.len().min(500)],
-            error = %e,
-            "Failed to parse proposals JSON"
-        );
-        Error::Ai(format!("Failed to parse proposals: {}", e))
-    })
-}
-
-fn extract_json_array(text: &str) -> Option<String> {
-    // Try to find a JSON array, possibly within code blocks
-    let text = text.trim();
-
-    // If the whole thing is a JSON array
-    if text.starts_with('[') {
-        return Some(text.to_string());
-    }
-
-    // Look for ```json ... ``` blocks
-    if let Some(start) = text.find("```json") {
-        let after_marker = &text[start + 7..];
-        if let Some(end) = after_marker.find("```") {
-            let block = after_marker[..end].trim();
-            // Handle both arrays and objects within code blocks
-            if block.starts_with('[') {
-                return Some(block.to_string());
-            }
-            if block.starts_with('{') {
-                if let Some(arr) = extract_array_from_object(block) {
-                    return Some(arr);
-                }
-            }
-        }
-    }
-
-    // Look for ``` ... ``` blocks
-    if let Some(start) = text.find("```") {
-        let after_marker = &text[start + 3..];
-        if let Some(end) = after_marker.find("```") {
-            let block = after_marker[..end].trim();
-            if block.starts_with('[') {
-                return Some(block.to_string());
-            }
-            if block.starts_with('{') {
-                if let Some(arr) = extract_array_from_object(block) {
-                    return Some(arr);
-                }
-            }
-        }
-    }
-
-    // Try to find first [ and last ]
-    if let (Some(start), Some(end)) = (text.find('['), text.rfind(']')) {
-        if end > start {
-            return Some(text[start..=end].to_string());
-        }
-    }
-
-    // Last resort: the AI returned a JSON object wrapping the array
-    // e.g. {"proposals": [...]} or {"nodes": [...]}
-    if text.contains('{') {
-        // Find the outermost JSON object
-        let obj_start = text.find('{')?;
-        let obj_end = text.rfind('}')?;
-        if obj_end > obj_start {
-            let obj_text = &text[obj_start..=obj_end];
-            if let Some(arr) = extract_array_from_object(obj_text) {
-                return Some(arr);
-            }
-        }
-    }
-
-    None
-}
-
-/// Given a JSON object string, extract the first array value from any key.
-fn extract_array_from_object(text: &str) -> Option<String> {
-    let value: serde_json::Value = serde_json::from_str(text).ok()?;
-    let obj = value.as_object()?;
-    for (_key, val) in obj {
-        if val.is_array() {
-            return Some(val.to_string());
-        }
-    }
-    None
+    Ok(response.proposals)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_extract_json_array_plain() {
-        let input = r#"[{"title": "test"}]"#;
-        assert_eq!(extract_json_array(input), Some(input.to_string()));
-    }
-
-    #[test]
-    fn test_extract_json_array_from_code_block() {
-        let input = "Here are the proposals:\n```json\n[{\"title\": \"test\"}]\n```\n";
-        assert_eq!(
-            extract_json_array(input),
-            Some("[{\"title\": \"test\"}]".to_string())
-        );
-    }
 
     #[test]
     fn test_extract_youtube_id_watch_url() {

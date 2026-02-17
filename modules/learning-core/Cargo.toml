@@ -20,6 +20,9 @@ thiserror.workspace = true
 tracing.workspace = true
 reqwest.workspace = true
 
+# Schema generation for structured output
+schemars = { version = "0.8", features = ["derive"] }
+
 # Local deps
 ai-client = { path = "../ai-client" }
 twilio = { path = "../twilio-rs" }

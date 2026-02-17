@@ -27,6 +27,7 @@ pub struct ExistingNodesArgs {
 
 #[derive(Debug, Serialize)]
 pub struct ExistingNodesResult {
+    pub summary: String,
     pub nodes: Vec<ExistingNode>,
 }
 
@@ -35,6 +36,14 @@ pub struct ExistingNode {
     pub id: String,
     pub title: String,
     pub description: String,
+    pub depth: i64,
+    pub outgoing: Vec<ExistingEdge>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExistingEdge {
+    pub target_title: String,
+    pub movement: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -68,13 +77,18 @@ impl Tool for ExistingNodesTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Fetch nodes with their outgoing edges
         let mut result = self
             .graph
             .execute(
                 neo4rs::query(
-                    "MATCH (n:Node {topic_root_id: $topic_root_id}) RETURN n.id AS id, n.title AS title, n.description AS description",
+                    "MATCH (n:Node {topic_root_id: $topic_root_id}) \
+                     OPTIONAL MATCH (n)-[r]->(m) \
+                     RETURN n.id AS id, n.title AS title, n.description AS description, \
+                            n.depth AS depth, \
+                            collect(CASE WHEN m IS NOT NULL THEN {target_title: m.title, movement: type(r)} ELSE NULL END) AS edges",
                 )
-                .param("topic_root_id", args.topic_root_id),
+                .param("topic_root_id", args.topic_root_id.clone()),
             )
             .await
             .map_err(|e| ExistingNodesError::Graph(e.to_string()))?;
@@ -85,13 +99,35 @@ impl Tool for ExistingNodesTool {
             .await
             .map_err(|e| ExistingNodesError::Graph(e.to_string()))?
         {
+            let depth: i64 = row.get::<i64>("depth").unwrap_or(0);
+
+            // Parse edge list from the collected maps
+            let edges_raw: Vec<std::collections::HashMap<String, String>> =
+                row.get("edges").unwrap_or_default();
+            let outgoing: Vec<ExistingEdge> = edges_raw
+                .into_iter()
+                .filter(|e| !e.is_empty())
+                .map(|e| ExistingEdge {
+                    target_title: e.get("target_title").cloned().unwrap_or_default(),
+                    movement: e.get("movement").cloned().unwrap_or_default(),
+                })
+                .collect();
+
             nodes.push(ExistingNode {
                 id: row.get("id").unwrap_or_default(),
                 title: row.get("title").unwrap_or_default(),
                 description: row.get("description").unwrap_or_default(),
+                depth,
+                outgoing,
             });
         }
 
-        Ok(ExistingNodesResult { nodes })
+        let summary = format!(
+            "Graph has {} nodes across {} edges.",
+            nodes.len(),
+            nodes.iter().map(|n| n.outgoing.len()).sum::<usize>()
+        );
+
+        Ok(ExistingNodesResult { summary, nodes })
     }
 }

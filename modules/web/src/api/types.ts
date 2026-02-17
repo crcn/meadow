@@ -1,11 +1,11 @@
 // ─── Enums ───────────────────────────────────────────────────────────
 
 export enum Movement {
-  SUPPORTS = 'SUPPORTS',
-  DEEPENS = 'DEEPENS',
-  RELATES_TO = 'RELATES_TO',
-  APPLIES = 'APPLIES',
-  CONTEXTUALIZES = 'CONTEXTUALIZES',
+  DEEPER = 'DEEPER',
+  BROADER = 'BROADER',
+  FOUNDATION = 'FOUNDATION',
+  PRACTICE = 'PRACTICE',
+  INSPIRE = 'INSPIRE',
 }
 
 export enum NodeState {
@@ -54,6 +54,7 @@ export interface GraphNode {
   movement: Movement | null
   isWildcard: boolean
   visitCount: number
+  depth: number
 }
 
 export interface GraphEdge {

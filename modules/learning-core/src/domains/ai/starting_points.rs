@@ -1,4 +1,5 @@
-use ai_client::traits::{Agent, EmbedAgent};
+use ai_client::traits::EmbedAgent;
+use ai_client::OpenAi;
 use neo4rs::Graph;
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -6,14 +7,14 @@ use uuid::Uuid;
 
 use super::agent;
 use super::prompts::{INVESTIGATION_SYSTEM_PROMPT, STARTING_POINTS_PROMPT};
-use crate::domains::graph::models::{Resource, TopicGraph};
+use crate::domains::graph::models::{Movement, Resource, TopicGraph};
 use crate::domains::graph::{assembler, queries};
 use crate::error::Result;
 
 /// Generate starting points for a new topic.
 /// Creates nodes connected to the TopicRoot via STARTS_WITH edges.
-pub async fn generate_starting_points<A: Agent>(
-    ai_agent: &A,
+pub async fn generate_starting_points(
+    ai_agent: &OpenAi,
     embed_agent: &dyn EmbedAgent,
     memgraph: Arc<Graph>,
     db: &PgPool,
@@ -44,6 +45,7 @@ pub async fn generate_starting_points<A: Agent>(
         INVESTIGATION_SYSTEM_PROMPT,
         &prompt,
         max_turns,
+        false,
     )
     .await?;
 
@@ -54,11 +56,14 @@ pub async fn generate_starting_points<A: Agent>(
 
     // Persist each starting point
     for (i, proposal) in proposals.iter().enumerate() {
+        let movement = Movement::from_relationship_type(&proposal.movement)
+            .unwrap_or(Movement::Foundation);
         let resources: Vec<Resource> = proposal.resources.iter().cloned().map(Into::into).collect();
 
         tracing::info!(
             index = i,
             title = %proposal.title,
+            movement = %proposal.movement,
             resources = resources.len(),
             "Embedding and saving starting point"
         );
@@ -77,15 +82,17 @@ pub async fn generate_starting_points<A: Agent>(
             topic_root_id,
             &resources,
             &embedding,
+            1, // starting points are depth 1
         )
         .await?;
 
-        // Connect to topic root via STARTS_WITH
-        queries::create_starts_with_edge(&memgraph, topic_root_id, node_id).await?;
+        // Connect to topic root via the AI-assigned movement type
+        queries::create_edge(&memgraph, topic_root_id, node_id, movement).await?;
 
         tracing::info!(
             node_id = %node_id,
             title = %proposal.title,
+            movement = %movement.as_relationship_type(),
             "Starting point node created"
         );
     }

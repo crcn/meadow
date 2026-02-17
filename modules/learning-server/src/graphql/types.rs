@@ -1,25 +1,29 @@
-use async_graphql::{Enum, SimpleObject, ID};
+use async_graphql::{ComplexObject, Context, Enum, Result, SimpleObject, ID};
 use learning_core::domains::graph::models as dm;
+use uuid::Uuid;
+
+use crate::state::AppState;
+use super::guard::get_member_id;
 
 // ─── Enums ─────────────────────────────────────────────────────────
 
 #[derive(Enum, Copy, Clone, Eq, PartialEq)]
 pub enum Movement {
-    Supports,
-    Deepens,
-    RelatesTo,
-    Applies,
-    Contextualizes,
+    Deeper,
+    Broader,
+    Foundation,
+    Practice,
+    Inspire,
 }
 
 impl From<dm::Movement> for Movement {
     fn from(m: dm::Movement) -> Self {
         match m {
-            dm::Movement::Supports => Movement::Supports,
-            dm::Movement::Deepens => Movement::Deepens,
-            dm::Movement::RelatesTo => Movement::RelatesTo,
-            dm::Movement::Applies => Movement::Applies,
-            dm::Movement::Contextualizes => Movement::Contextualizes,
+            dm::Movement::Deeper => Movement::Deeper,
+            dm::Movement::Broader => Movement::Broader,
+            dm::Movement::Foundation => Movement::Foundation,
+            dm::Movement::Practice => Movement::Practice,
+            dm::Movement::Inspire => Movement::Inspire,
         }
     }
 }
@@ -27,11 +31,11 @@ impl From<dm::Movement> for Movement {
 impl From<Movement> for dm::Movement {
     fn from(m: Movement) -> Self {
         match m {
-            Movement::Supports => dm::Movement::Supports,
-            Movement::Deepens => dm::Movement::Deepens,
-            Movement::RelatesTo => dm::Movement::RelatesTo,
-            Movement::Applies => dm::Movement::Applies,
-            Movement::Contextualizes => dm::Movement::Contextualizes,
+            Movement::Deeper => dm::Movement::Deeper,
+            Movement::Broader => dm::Movement::Broader,
+            Movement::Foundation => dm::Movement::Foundation,
+            Movement::Practice => dm::Movement::Practice,
+            Movement::Inspire => dm::Movement::Inspire,
         }
     }
 }
@@ -143,6 +147,7 @@ pub struct GraphNode {
     pub movement: Option<Movement>,
     pub is_wildcard: bool,
     pub visit_count: i32,
+    pub depth: i32,
 }
 
 impl From<dm::GraphNode> for GraphNode {
@@ -157,6 +162,7 @@ impl From<dm::GraphNode> for GraphNode {
             movement: n.movement.map(Into::into),
             is_wildcard: n.is_wildcard,
             visit_count: n.visit_count as i32,
+            depth: n.depth,
         }
     }
 }
@@ -185,11 +191,46 @@ impl From<dm::GraphEdge> for GraphEdge {
 }
 
 #[derive(SimpleObject)]
+#[graphql(complex)]
 pub struct TopicGraph {
     pub topic_root: TopicRoot,
     pub current_node_id: ID,
     pub nodes: Vec<GraphNode>,
     pub edges: Vec<GraphEdge>,
+}
+
+#[ComplexObject]
+impl TopicGraph {
+    /// Generate 3 contextual expansion direction suggestions for a node.
+    async fn expansion_suggestions(
+        &self,
+        ctx: &Context<'_>,
+        node_id: ID,
+    ) -> Result<Vec<String>> {
+        let member_id = get_member_id(ctx)?;
+        let state = ctx.data::<AppState>()?;
+        let topic_root_id: Uuid = self.topic_root.id.parse()?;
+        let node_id: Uuid = node_id.parse()?;
+
+        let node = learning_core::domains::graph::queries::get_node(&state.graph, node_id)
+            .await?
+            .ok_or_else(|| async_graphql::Error::new("Node not found"))?;
+
+        let ai_agent = crate::graphql::mutation::create_ai_agent();
+
+        let suggestions = learning_core::domains::ai::proposer::suggest_expansions(
+            &ai_agent,
+            state.graph.clone(),
+            &state.db,
+            member_id,
+            topic_root_id,
+            node_id,
+            &node.title,
+        )
+        .await?;
+
+        Ok(suggestions)
+    }
 }
 
 impl From<dm::TopicGraph> for TopicGraph {

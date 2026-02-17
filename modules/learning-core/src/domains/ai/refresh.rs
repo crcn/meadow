@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ai_client::traits::Agent;
+use ai_client::OpenAi;
 use neo4rs::Graph;
 use uuid::Uuid;
 
@@ -17,7 +17,7 @@ Return your results as a JSON array with a single entry:
   {
     "title": "<topic title>",
     "description": "<topic description>",
-    "movement": "SUPPORTS",
+    "movement": "FOUNDATION",
     "resources": [
       {
         "type": "youtube|article|guide|tutorial",
@@ -34,8 +34,8 @@ Return your results as a JSON array with a single entry:
 Find 2-3 new resources. Prefer different formats than what's already there (if they had YouTube, try articles, and vice versa). Make sure resources actually exist."#;
 
 /// Load more resources for a node, appending new AI-found ones to the existing list.
-pub async fn load_more_resources<A: Agent>(
-    ai_agent: &A,
+pub async fn load_more_resources(
+    ai_agent: &OpenAi,
     memgraph: Arc<Graph>,
     tavily_api_key: &str,
     youtube_api_key: &str,
@@ -71,6 +71,7 @@ pub async fn load_more_resources<A: Agent>(
         LOAD_MORE_PROMPT,
         &user_prompt,
         max_turns,
+        false,
     )
     .await?;
 

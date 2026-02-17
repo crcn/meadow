@@ -24,6 +24,9 @@ pub enum Error {
     NotFound(String),
 
     #[error("{0}")]
+    Validation(String),
+
+    #[error("{0}")]
     Internal(String),
 }
 

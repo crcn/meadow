@@ -32,6 +32,7 @@ const TOPIC_GRAPH_FRAGMENT = gql`
       movement
       isWildcard
       visitCount
+      depth
     }
     edges {
       id
@@ -69,6 +70,14 @@ export const TOPIC_GRAPH = gql`
   ${TOPIC_GRAPH_FRAGMENT}
 `
 
+export const EXPANSION_SUGGESTIONS = gql`
+  query ExpansionSuggestions($topicRootId: ID!, $nodeId: ID!) {
+    topicGraph(topicRootId: $topicRootId) {
+      expansionSuggestions(nodeId: $nodeId)
+    }
+  }
+`
+
 // ─── Mutations ───────────────────────────────────────────────────────
 
 export const SEND_OTP = gql`
@@ -98,8 +107,8 @@ export const ENTER_TOPIC = gql`
 `
 
 export const TRAVERSE = gql`
-  mutation Traverse($topicRootId: ID!, $fromNodeId: ID!, $toNodeId: ID!, $movement: Movement!) {
-    traverse(topicRootId: $topicRootId, fromNodeId: $fromNodeId, toNodeId: $toNodeId, movement: $movement) {
+  mutation Traverse($topicRootId: ID!, $toNodeId: ID!, $movement: Movement!) {
+    traverse(topicRootId: $topicRootId, toNodeId: $toNodeId, movement: $movement) {
       ...TopicGraphFields
     }
   }
@@ -125,8 +134,8 @@ export const BACK_UP = gql`
 `
 
 export const SHOW_MORE = gql`
-  mutation ShowMore($topicRootId: ID!, $nodeId: ID!, $nodeTitle: String!) {
-    showMore(topicRootId: $topicRootId, nodeId: $nodeId, nodeTitle: $nodeTitle) {
+  mutation ShowMore($topicRootId: ID!, $nodeId: ID!, $prompt: String) {
+    showMore(topicRootId: $topicRootId, nodeId: $nodeId, prompt: $prompt) {
       ...TopicGraphFields
     }
   }
