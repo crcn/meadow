@@ -1,72 +1,45 @@
-import { useState } from 'react'
 import type { GraphNode } from '../../api/types'
+import { useTopicGraphStore } from '../../stores/topicGraph'
 import { ResourcePreview } from './ResourcePreview'
-import { AskPanel } from './AskPanel'
 
 interface DetailPanelProps {
   node: GraphNode
   onClose: () => void
-  onLeaveNote: (nodeId: string, body: string) => Promise<void>
-  onAsk: (question: string) => Promise<string>
 }
 
-export function DetailPanel({ node, onClose, onLeaveNote, onAsk }: DetailPanelProps) {
-  const [noteBody, setNoteBody] = useState('')
-  const [submittingNote, setSubmittingNote] = useState(false)
-
-  const handleLeaveNote = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!noteBody.trim()) return
-    setSubmittingNote(true)
-    await onLeaveNote(node.id, noteBody)
-    setNoteBody('')
-    setSubmittingNote(false)
-  }
+export function DetailPanel({ node, onClose }: DetailPanelProps) {
+  const loading = useTopicGraphStore((s) => s.loading)
+  const upvoteResource = useTopicGraphStore((s) => s.upvoteResource)
+  const loadMoreResources = useTopicGraphStore((s) => s.loadMoreResources)
 
   return (
-    <div className="detail-panel">
-      <div className="detail-header">
-        <h3>{node.title}</h3>
-        <button className="detail-close" onClick={onClose}>×</button>
+    <div className="fixed right-0 top-0 bottom-0 w-[30vw] bg-meadow-surface border-l border-meadow-border p-6 overflow-y-auto z-20 shadow-[-4px_0_16px_rgba(0,0,0,0.06)]">
+      <div className="flex justify-between items-start mb-4">
+        <h3 className="text-lg font-semibold">{node.title}</h3>
+        <button className="bg-none text-meadow-muted text-2xl px-1 leading-none cursor-pointer hover:text-meadow-text" onClick={onClose}>&times;</button>
       </div>
 
-      <p className="detail-description">{node.description}</p>
+      <p className="text-meadow-muted text-sm mb-6 leading-relaxed">{node.description}</p>
 
       {node.resources.length > 0 && (
-        <div className="detail-resources">
-          <h4>Resources</h4>
+        <div>
+          <h4 className="text-xs uppercase tracking-wide text-meadow-muted mb-3">Resources</h4>
           {node.resources.map((r, i) => (
-            <ResourcePreview key={i} resource={r} />
+            <ResourcePreview
+              key={i}
+              resource={r}
+              onUpvote={() => upvoteResource(node.id, i)}
+            />
           ))}
+          <button
+            onClick={() => loadMoreResources(node.id)}
+            disabled={loading}
+            className="w-full text-[12px] py-2 text-meadow-muted border border-dashed border-meadow-border rounded-lg hover:border-meadow-accent hover:text-meadow-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? 'Finding more...' : 'Load more resources'}
+          </button>
         </div>
       )}
-
-      {node.notes.length > 0 && (
-        <div className="detail-notes">
-          <h4>Trail Notes</h4>
-          {node.notes.map((note) => (
-            <div key={note.id} className="trail-note">
-              <p>{note.body}</p>
-              <span className="note-time">{new Date(note.createdAt).toLocaleDateString()}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <form onSubmit={handleLeaveNote} className="note-form">
-        <input
-          type="text"
-          value={noteBody}
-          onChange={(e) => setNoteBody(e.target.value)}
-          placeholder="Leave a trail note..."
-          disabled={submittingNote}
-        />
-        <button type="submit" disabled={submittingNote || !noteBody.trim()}>
-          Note
-        </button>
-      </form>
-
-      <AskPanel onAsk={onAsk} />
     </div>
   )
 }

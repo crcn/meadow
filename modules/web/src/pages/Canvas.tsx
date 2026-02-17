@@ -1,11 +1,9 @@
+import { useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ReactFlowProvider } from '@xyflow/react'
-import { useTopicGraph } from '../hooks/useTopicGraph'
+import { useTopicGraphStore } from '../stores/topicGraph'
 import { GraphCanvas } from '../components/canvas/GraphCanvas'
 import { DetailPanel } from '../components/canvas/DetailPanel'
-import { ShowMoreButton } from '../components/canvas/ShowMoreButton'
-import { PathBreadcrumb } from '../components/canvas/PathBreadcrumb'
-import type { GraphNode, Movement } from '../api/types'
 
 export function Canvas() {
   const { topicId } = useParams<{ topicId: string }>()
@@ -24,80 +22,58 @@ export function Canvas() {
 }
 
 function CanvasInner({ topicRootId }: { topicRootId: string }) {
-  const {
-    graph,
-    flowNodes,
-    flowEdges,
-    selectedNode,
-    setSelectedNodeId,
-    loading,
-    traverse,
-    backUp,
-    showMore,
-    leaveNote,
-    askAboutNode,
-  } = useTopicGraph(topicRootId)
+  const graph = useTopicGraphStore((s) => s.graph)
+  const loading = useTopicGraphStore((s) => s.loading)
+  const error = useTopicGraphStore((s) => s.error)
+  const selectedNodeId = useTopicGraphStore((s) => s.selectedNodeId)
+  const backUp = useTopicGraphStore((s) => s.backUp)
+  const setSelectedNodeId = useTopicGraphStore((s) => s.setSelectedNodeId)
+  const clearError = useTopicGraphStore((s) => s.clearError)
+  const init = useTopicGraphStore((s) => s.init)
 
-  const handleNodeClick = (_nodeId: string, node: GraphNode) => {
-    setSelectedNodeId(node.id)
-  }
+  useEffect(() => {
+    init(topicRootId)
+  }, [topicRootId, init])
 
-  const handleTraverse = async (fromNodeId: string, toNodeId: string, movement: Movement) => {
-    setSelectedNodeId(null)
-    await traverse(fromNodeId, toNodeId, movement)
-  }
-
-  const handleShowMore = async () => {
-    if (!graph) return
-    const currentNode = graph.nodes.find((n) => n.id === graph.currentNodeId)
-    if (currentNode) {
-      await showMore(currentNode.id, currentNode.title)
-    }
-  }
-
-  const handleBreadcrumbClick = (nodeId: string) => {
-    const node = graph?.nodes.find((n) => n.id === nodeId)
-    if (node) setSelectedNodeId(nodeId)
-  }
+  const resolved = graph?.nodes.find((n) => n.id === selectedNodeId) ?? null
 
   if (!graph && loading) {
-    return <div className="canvas-loading">Loading your meadow...</div>
+    return <div className="flex items-center justify-center h-screen text-meadow-muted text-lg">Loading your meadow...</div>
   }
 
   return (
-    <div className="canvas-page">
-      <div className="canvas-header">
-        <button className="back-button" onClick={() => history.back()}>
-          ← Back
+    <div className="h-screen flex flex-col">
+      <div className="flex items-center gap-4 px-5 py-3 bg-meadow-surface border-b border-meadow-border">
+        <button
+          className="bg-transparent text-meadow-muted text-[13px] px-3 py-1.5 border border-meadow-border rounded-lg hover:border-meadow-accent transition-colors"
+          onClick={() => history.back()}
+        >
+          &larr; Back
         </button>
-        <h2>{graph?.topicRoot.name}</h2>
-        <button className="backup-button" onClick={backUp} disabled={loading}>
-          ↩ Back up
+        <h2 className="flex-1 text-lg font-semibold">{graph?.topicRoot.name}</h2>
+        <button
+          className="bg-transparent text-meadow-muted text-[13px] px-3 py-1.5 border border-meadow-border rounded-lg hover:border-meadow-accent transition-colors disabled:opacity-50"
+          onClick={backUp}
+          disabled={loading}
+        >
+          &hookleftarrow; Back up
         </button>
       </div>
 
-      {graph && (
-        <PathBreadcrumb nodes={graph.nodes} onNodeClick={handleBreadcrumbClick} />
-      )}
-
-      <div className="canvas-container">
-        <GraphCanvas
-          nodes={flowNodes}
-          edges={flowEdges}
-          currentNodeId={graph?.currentNodeId}
-          onNodeClick={handleNodeClick}
-          onTraverse={handleTraverse}
-        />
-
-        <ShowMoreButton onClick={handleShowMore} loading={loading} />
+      <div className="flex-1 relative">
+        <GraphCanvas />
+        {error && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2 rounded-lg shadow-md flex items-center gap-3 z-30">
+            <span>{error}</span>
+            <button onClick={clearError} className="text-red-400 hover:text-red-600 text-lg leading-none">&times;</button>
+          </div>
+        )}
       </div>
 
-      {selectedNode && (
+      {resolved && (
         <DetailPanel
-          node={selectedNode}
+          node={resolved}
           onClose={() => setSelectedNodeId(null)}
-          onLeaveNote={leaveNote}
-          onAsk={(question) => askAboutNode(selectedNode.id, question)}
         />
       )}
     </div>

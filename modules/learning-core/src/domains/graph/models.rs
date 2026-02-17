@@ -81,6 +81,8 @@ pub struct Resource {
     pub title: String,
     pub channel: Option<String>,
     pub reason: String,
+    #[serde(default)]
+    pub votes: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

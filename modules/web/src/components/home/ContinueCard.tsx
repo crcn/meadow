@@ -10,9 +10,12 @@ export function ContinueCard({ topic, onClick }: ContinueCardProps) {
   const timeAgo = getTimeAgo(lastActive)
 
   return (
-    <button className="continue-card" onClick={onClick}>
-      <span className="continue-card-name">{topic.topicRoot.name}</span>
-      <span className="continue-card-time">{timeAgo}</span>
+    <button
+      className="flex justify-between items-center px-4.5 py-3.5 bg-meadow-surface border border-meadow-border rounded-lg cursor-pointer text-left w-full hover:bg-meadow-bg hover:border-meadow-accent transition-colors"
+      onClick={onClick}
+    >
+      <span className="font-medium text-meadow-text">{topic.topicRoot.name}</span>
+      <span className="text-xs text-meadow-muted">{timeAgo}</span>
     </button>
   )
 }

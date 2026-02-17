@@ -25,6 +25,7 @@ pub struct YoutubeDetailsResult {
     pub description: String,
     pub view_count: String,
     pub duration: String,
+    pub default_audio_language: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -56,6 +57,7 @@ struct YTVideoSnippet {
     title: String,
     channel_title: String,
     description: String,
+    default_audio_language: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -119,6 +121,7 @@ impl Tool for YoutubeDetailsTool {
             description: item.snippet.description,
             view_count: item.statistics.view_count.unwrap_or_default(),
             duration: item.content_details.duration,
+            default_audio_language: item.snippet.default_audio_language,
         })
     }
 }

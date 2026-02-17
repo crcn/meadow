@@ -21,6 +21,7 @@ const TOPIC_GRAPH_FRAGMENT = gql`
         title
         channel
         reason
+        votes
       }
       notes {
         id
@@ -105,6 +106,15 @@ export const TRAVERSE = gql`
   ${TOPIC_GRAPH_FRAGMENT}
 `
 
+export const JUMP_TO_NODE = gql`
+  mutation JumpToNode($topicRootId: ID!, $nodeId: ID!) {
+    jumpToNode(topicRootId: $topicRootId, nodeId: $nodeId) {
+      ...TopicGraphFields
+    }
+  }
+  ${TOPIC_GRAPH_FRAGMENT}
+`
+
 export const BACK_UP = gql`
   mutation BackUp($topicRootId: ID!) {
     backUp(topicRootId: $topicRootId) {
@@ -126,6 +136,24 @@ export const SHOW_MORE = gql`
 export const LEAVE_NOTE = gql`
   mutation LeaveNote($nodeId: ID!, $body: String!) {
     leaveNote(nodeId: $nodeId, body: $body) {
+      ...TopicGraphFields
+    }
+  }
+  ${TOPIC_GRAPH_FRAGMENT}
+`
+
+export const REFRESH_RESOURCES = gql`
+  mutation RefreshResources($topicRootId: ID!, $nodeId: ID!) {
+    refreshResources(topicRootId: $topicRootId, nodeId: $nodeId) {
+      ...TopicGraphFields
+    }
+  }
+  ${TOPIC_GRAPH_FRAGMENT}
+`
+
+export const UPVOTE_RESOURCE = gql`
+  mutation UpvoteResource($topicRootId: ID!, $nodeId: ID!, $resourceIndex: Int!) {
+    upvoteResource(topicRootId: $topicRootId, nodeId: $nodeId, resourceIndex: $resourceIndex) {
       ...TopicGraphFields
     }
   }

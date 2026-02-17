@@ -41,6 +41,7 @@ Guidelines:
 - Prefer resources that are beginner-friendly and well-explained
 - Always verify resources exist before including them
 - Mix resource types: don't just suggest YouTube videos, find articles, guides, tutorials too
+- When checking YouTube video details, look at the `default_audio_language` field. If it is set to a non-English language (not starting with "en"), do NOT include that video — it is likely spoken in another language despite having an English title/description. If the field is null/missing, the video is acceptable.
 "#;
 
 pub const STARTING_POINTS_PROMPT: &str = r#"You are investigating a new learning topic to generate starting points for a learner.

@@ -82,6 +82,25 @@ pub async fn create_node(
     })
 }
 
+pub async fn update_node_resources(
+    graph: &Graph,
+    node_id: Uuid,
+    resources: &[Resource],
+) -> Result<()> {
+    let resources_json = serde_json::to_string(resources)
+        .map_err(|e| Error::Internal(e.to_string()))?;
+
+    graph
+        .run(
+            query("MATCH (n:Node {id: $id}) SET n.resources = $resources")
+                .param("id", node_id.to_string())
+                .param("resources", resources_json),
+        )
+        .await?;
+
+    Ok(())
+}
+
 pub async fn get_node(graph: &Graph, id: Uuid) -> Result<Option<Node>> {
     let mut result = graph
         .execute(

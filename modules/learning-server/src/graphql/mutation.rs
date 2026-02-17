@@ -172,6 +172,40 @@ impl MutationRoot {
         Ok(graph.into())
     }
 
+    // ─── Jump ────────────────────────────────────────────────────────
+
+    /// Jump to any visited node, making it the current node.
+    async fn jump_to_node(
+        &self,
+        ctx: &Context<'_>,
+        topic_root_id: ID,
+        node_id: ID,
+    ) -> Result<TopicGraph> {
+        let member_id = get_member_id(ctx)?;
+        let state = ctx.data::<AppState>()?;
+        let topic_root_id: Uuid = topic_root_id.parse()?;
+        let node_id: Uuid = node_id.parse()?;
+
+        sqlx::query(
+            "UPDATE learner_position SET current_node_id = $3, updated_at = now() WHERE member_id = $1 AND topic_root_id = $2"
+        )
+        .bind(member_id)
+        .bind(topic_root_id)
+        .bind(node_id)
+        .execute(&state.db)
+        .await?;
+
+        let graph = learning_core::domains::graph::assembler::assemble_topic_graph(
+            &state.graph,
+            &state.db,
+            member_id,
+            topic_root_id,
+        )
+        .await?;
+
+        Ok(graph.into())
+    }
+
     // ─── Proposals ───────────────────────────────────────────────────
 
     /// Generate more proposals from the current node via AI investigation.
@@ -202,6 +236,95 @@ impl MutationRoot {
             &state.tavily_api_key,
             &state.youtube_api_key,
             state.ai_max_turns,
+        )
+        .await?;
+
+        Ok(graph.into())
+    }
+
+    // ─── Refresh Resources ─────────────────────────────────────────
+
+    /// Load more resources for a node via AI search.
+    async fn refresh_resources(
+        &self,
+        ctx: &Context<'_>,
+        topic_root_id: ID,
+        node_id: ID,
+    ) -> Result<TopicGraph> {
+        let member_id = get_member_id(ctx)?;
+        let state = ctx.data::<AppState>()?;
+        let topic_root_id: Uuid = topic_root_id.parse()?;
+        let node_id: Uuid = node_id.parse()?;
+
+        // Get the current node from Memgraph
+        let node = learning_core::domains::graph::queries::get_node(&state.graph, node_id)
+            .await?
+            .ok_or_else(|| async_graphql::Error::new("Node not found"))?;
+
+        let ai_agent = create_ai_agent();
+
+        learning_core::domains::ai::refresh::load_more_resources(
+            &ai_agent,
+            state.graph.clone(),
+            &state.tavily_api_key,
+            &state.youtube_api_key,
+            node_id,
+            &node.title,
+            &node.description,
+            &node.resources,
+            state.ai_max_turns,
+        )
+        .await?;
+
+        let graph = learning_core::domains::graph::assembler::assemble_topic_graph(
+            &state.graph,
+            &state.db,
+            member_id,
+            topic_root_id,
+        )
+        .await?;
+
+        Ok(graph.into())
+    }
+
+    // ─── Upvote Resource ───────────────────────────────────────────
+
+    /// Upvote a resource on a node, making it rise to the top.
+    async fn upvote_resource(
+        &self,
+        ctx: &Context<'_>,
+        topic_root_id: ID,
+        node_id: ID,
+        resource_index: i32,
+    ) -> Result<TopicGraph> {
+        let member_id = get_member_id(ctx)?;
+        let state = ctx.data::<AppState>()?;
+        let topic_root_id: Uuid = topic_root_id.parse()?;
+        let node_id: Uuid = node_id.parse()?;
+
+        let node = learning_core::domains::graph::queries::get_node(&state.graph, node_id)
+            .await?
+            .ok_or_else(|| async_graphql::Error::new("Node not found"))?;
+
+        let idx = resource_index as usize;
+        if idx >= node.resources.len() {
+            return Err(async_graphql::Error::new("Resource index out of bounds"));
+        }
+
+        let mut resources = node.resources;
+        resources[idx].votes += 1;
+        // Sort by votes descending so best resources float to top
+        resources.sort_by(|a, b| b.votes.cmp(&a.votes));
+
+        learning_core::domains::graph::queries::update_node_resources(
+            &state.graph, node_id, &resources,
+        ).await?;
+
+        let graph = learning_core::domains::graph::assembler::assemble_topic_graph(
+            &state.graph,
+            &state.db,
+            member_id,
+            topic_root_id,
         )
         .await?;
 

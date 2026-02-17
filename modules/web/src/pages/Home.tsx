@@ -31,14 +31,14 @@ export function Home() {
   }
 
   return (
-    <div className="home-page">
-      <h1>Our Meadow</h1>
+    <div className="max-w-[600px] mx-auto px-5 py-15">
+      <h1 className="text-3xl font-bold mb-8 text-meadow-root">Our Meadow</h1>
       <TopicInput onSubmit={handleEnterTopic} loading={loading} />
 
       {topics.length > 0 && (
-        <div className="continue-section">
-          <h3>Continue exploring</h3>
-          <div className="continue-list">
+        <div>
+          <h3 className="text-sm text-meadow-muted uppercase tracking-wide mb-3">Continue exploring</h3>
+          <div className="flex flex-col gap-2">
             {topics.map((topic) => (
               <ContinueCard
                 key={topic.topicRoot.id}

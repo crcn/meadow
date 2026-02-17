@@ -13,7 +13,7 @@ export function Login() {
   }
 
   return (
-    <div className="login-page">
+    <div className="flex items-center justify-center min-h-screen">
       {phone ? (
         <OtpInput
           phone={phone}

@@ -98,6 +98,7 @@ pub struct Resource {
     pub title: String,
     pub channel: Option<String>,
     pub reason: String,
+    pub votes: i32,
 }
 
 impl From<dm::Resource> for Resource {
@@ -109,6 +110,7 @@ impl From<dm::Resource> for Resource {
             title: r.title,
             channel: r.channel,
             reason: r.reason,
+            votes: r.votes,
         }
     }
 }

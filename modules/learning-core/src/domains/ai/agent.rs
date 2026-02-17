@@ -1,4 +1,4 @@
-use ai_client::traits::{Agent, PromptBuilder};
+use ai_client::traits::{Agent, Message, PromptBuilder};
 use neo4rs::Graph;
 use std::sync::Arc;
 
@@ -30,15 +30,38 @@ pub struct ProposedResource {
 
 impl From<ProposedResource> for Resource {
     fn from(r: ProposedResource) -> Self {
+        let youtube_id = r.youtube_id.or_else(|| extract_youtube_id(r.url.as_deref()));
+
         Resource {
             resource_type: r.resource_type,
-            youtube_id: r.youtube_id,
+            youtube_id,
             url: r.url,
             title: r.title,
             channel: r.channel,
             reason: r.reason,
+            votes: 0,
         }
     }
+}
+
+/// Extract a YouTube video ID from a URL like:
+///   https://www.youtube.com/watch?v=abc123XYZ_-
+///   https://youtu.be/abc123XYZ_-
+fn extract_youtube_id(url: Option<&str>) -> Option<String> {
+    let url = url?;
+    // youtube.com/watch?v=ID
+    if let Some(pos) = url.find("v=") {
+        let after = &url[pos + 2..];
+        let id: String = after.chars().take_while(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect();
+        if id.len() == 11 { return Some(id); }
+    }
+    // youtu.be/ID
+    if let Some(pos) = url.find("youtu.be/") {
+        let after = &url[pos + 9..];
+        let id: String = after.chars().take_while(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect();
+        if id.len() == 11 { return Some(id); }
+    }
+    None
 }
 
 /// Run the AI investigation agent with all tools configured.
@@ -58,12 +81,16 @@ pub async fn investigate<A: Agent>(
         "Starting AI investigation"
     );
 
-    let agent = agent
+    let mut agent = agent
         .clone()
         .tool(TavilySearchTool::new(tavily_api_key.to_string()))
-        .tool(YoutubeSearchTool::new(youtube_api_key.to_string()))
-        .tool(YoutubeDetailsTool::new(youtube_api_key.to_string()))
         .tool(ExistingNodesTool::new(memgraph));
+
+    if !youtube_api_key.is_empty() {
+        agent = agent
+            .tool(YoutubeSearchTool::new(youtube_api_key.to_string()))
+            .tool(YoutubeDetailsTool::new(youtube_api_key.to_string()));
+    }
 
     let start = std::time::Instant::now();
 
@@ -81,8 +108,29 @@ pub async fn investigate<A: Agent>(
         "AI investigation complete"
     );
 
-    // Parse JSON array from the response
-    let proposals = parse_proposals(&response)?;
+    // Parse JSON array from the response — retry once if the AI didn't return JSON
+    let proposals = match parse_proposals(&response) {
+        Ok(p) => p,
+        Err(_) => {
+            tracing::warn!("First parse failed, asking AI to reformat as JSON");
+            let retry_response = agent
+                .prompt("Your previous response did not contain a valid JSON array. Please reformat your findings as a JSON array exactly matching this schema:\n[{\"title\": \"...\", \"description\": \"...\", \"movement\": \"SUPPORTS|DEEPENS|RELATES_TO|APPLIES|CONTEXTUALIZES\", \"resources\": [{\"type\": \"...\", \"url\": \"...\", \"title\": \"...\", \"channel\": null, \"reason\": \"...\"}]}]\nReturn ONLY the JSON array, no other text.")
+                .preamble(system_prompt)
+                .messages(vec![
+                    Message::user(user_prompt.to_string()),
+                    Message::assistant(response.clone()),
+                ])
+                .send()
+                .await
+                .map_err(|e| Error::Ai(e.to_string()))?;
+
+            tracing::info!(
+                retry_response_len = retry_response.len(),
+                "AI reformat response received"
+            );
+            parse_proposals(&retry_response)?
+        }
+    };
 
     for (i, p) in proposals.iter().enumerate() {
         tracing::info!(
@@ -99,11 +147,26 @@ pub async fn investigate<A: Agent>(
 
 fn parse_proposals(response: &str) -> Result<Vec<ProposedNode>> {
     // Find JSON array in the response (it might be wrapped in markdown code blocks)
-    let json_str = extract_json_array(response)
-        .ok_or_else(|| Error::Ai("No JSON array found in agent response".into()))?;
+    let json_str = match extract_json_array(response) {
+        Some(s) => s,
+        None => {
+            tracing::error!(
+                response_len = response.len(),
+                response_preview = %&response[..response.len().min(500)],
+                "No JSON array found in agent response"
+            );
+            return Err(Error::Ai("No JSON array found in agent response".into()));
+        }
+    };
 
-    serde_json::from_str(&json_str)
-        .map_err(|e| Error::Ai(format!("Failed to parse proposals: {}", e)))
+    serde_json::from_str(&json_str).map_err(|e| {
+        tracing::error!(
+            json_preview = %&json_str[..json_str.len().min(500)],
+            error = %e,
+            "Failed to parse proposals JSON"
+        );
+        Error::Ai(format!("Failed to parse proposals: {}", e))
+    })
 }
 
 fn extract_json_array(text: &str) -> Option<String> {
@@ -119,7 +182,16 @@ fn extract_json_array(text: &str) -> Option<String> {
     if let Some(start) = text.find("```json") {
         let after_marker = &text[start + 7..];
         if let Some(end) = after_marker.find("```") {
-            return Some(after_marker[..end].trim().to_string());
+            let block = after_marker[..end].trim();
+            // Handle both arrays and objects within code blocks
+            if block.starts_with('[') {
+                return Some(block.to_string());
+            }
+            if block.starts_with('{') {
+                if let Some(arr) = extract_array_from_object(block) {
+                    return Some(arr);
+                }
+            }
         }
     }
 
@@ -131,17 +203,48 @@ fn extract_json_array(text: &str) -> Option<String> {
             if block.starts_with('[') {
                 return Some(block.to_string());
             }
+            if block.starts_with('{') {
+                if let Some(arr) = extract_array_from_object(block) {
+                    return Some(arr);
+                }
+            }
         }
     }
 
-    // Last resort: find first [ and last ]
-    let start = text.find('[')?;
-    let end = text.rfind(']')?;
-    if end > start {
-        Some(text[start..=end].to_string())
-    } else {
-        None
+    // Try to find first [ and last ]
+    if let (Some(start), Some(end)) = (text.find('['), text.rfind(']')) {
+        if end > start {
+            return Some(text[start..=end].to_string());
+        }
     }
+
+    // Last resort: the AI returned a JSON object wrapping the array
+    // e.g. {"proposals": [...]} or {"nodes": [...]}
+    if text.contains('{') {
+        // Find the outermost JSON object
+        let obj_start = text.find('{')?;
+        let obj_end = text.rfind('}')?;
+        if obj_end > obj_start {
+            let obj_text = &text[obj_start..=obj_end];
+            if let Some(arr) = extract_array_from_object(obj_text) {
+                return Some(arr);
+            }
+        }
+    }
+
+    None
+}
+
+/// Given a JSON object string, extract the first array value from any key.
+fn extract_array_from_object(text: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(text).ok()?;
+    let obj = value.as_object()?;
+    for (_key, val) in obj {
+        if val.is_array() {
+            return Some(val.to_string());
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -161,5 +264,28 @@ mod tests {
             extract_json_array(input),
             Some("[{\"title\": \"test\"}]".to_string())
         );
+    }
+
+    #[test]
+    fn test_extract_youtube_id_watch_url() {
+        let url = "https://www.youtube.com/watch?v=juxycZTFZ6M";
+        assert_eq!(extract_youtube_id(Some(url)), Some("juxycZTFZ6M".to_string()));
+    }
+
+    #[test]
+    fn test_extract_youtube_id_short_url() {
+        let url = "https://youtu.be/juxycZTFZ6M";
+        assert_eq!(extract_youtube_id(Some(url)), Some("juxycZTFZ6M".to_string()));
+    }
+
+    #[test]
+    fn test_extract_youtube_id_playlist_returns_none() {
+        let url = "https://www.youtube.com/playlist?list=PLRA7uxKdQNb0";
+        assert_eq!(extract_youtube_id(Some(url)), None);
+    }
+
+    #[test]
+    fn test_extract_youtube_id_none_url() {
+        assert_eq!(extract_youtube_id(None), None);
     }
 }

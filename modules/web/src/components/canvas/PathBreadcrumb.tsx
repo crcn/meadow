@@ -7,7 +7,6 @@ interface PathBreadcrumbProps {
 }
 
 export function PathBreadcrumb({ nodes, onNodeClick }: PathBreadcrumbProps) {
-  // Show topic root + visited nodes + current node in order
   const pathNodes = nodes.filter(
     (n) => n.state === NodeState.TOPIC_ROOT || n.state === NodeState.VISITED || n.state === NodeState.CURRENT,
   )
@@ -15,12 +14,14 @@ export function PathBreadcrumb({ nodes, onNodeClick }: PathBreadcrumbProps) {
   if (pathNodes.length <= 1) return null
 
   return (
-    <div className="path-breadcrumb">
+    <div className="px-5 py-2 bg-meadow-surface border-b border-meadow-border text-xs text-meadow-muted overflow-x-auto whitespace-nowrap">
       {pathNodes.map((node, i) => (
         <span key={node.id}>
-          {i > 0 && <span className="breadcrumb-arrow"> → </span>}
+          {i > 0 && <span className="text-meadow-border"> &rarr; </span>}
           <button
-            className={`breadcrumb-item ${node.state === NodeState.CURRENT ? 'breadcrumb-current' : ''}`}
+            className={`bg-none border-none text-xs px-1 py-0.5 cursor-pointer hover:text-meadow-accent ${
+              node.state === NodeState.CURRENT ? 'text-meadow-text font-semibold' : 'text-meadow-muted'
+            }`}
             onClick={() => onNodeClick(node.id)}
           >
             {node.title}

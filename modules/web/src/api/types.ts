@@ -35,6 +35,7 @@ export interface Resource {
   title: string
   channel: string | null
   reason: string
+  votes: number
 }
 
 export interface Note {
